@@ -629,6 +629,10 @@
     }
   }
 
+  els.activePlayerChip.addEventListener("click", () => {
+    showPanel("player");
+  });
+
   document.addEventListener("pointerdown", ensureUserInteraction, { once: true });
 
   // Initial paint
