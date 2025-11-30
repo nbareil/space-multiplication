@@ -20,8 +20,8 @@
     playerSelect: document.getElementById("player-select"),
     addPlayerForm: document.getElementById("player-add-form"),
     newPlayerName: document.getElementById("new-player-name"),
-    tableRange: document.getElementById("table-range"),
-    tableValue: document.getElementById("table-value"),
+    tableCheckboxes: document.getElementById("table-checkboxes"),
+    allTablesToggle: document.getElementById("all-tables-toggle"),
     activePlayerChip: document.getElementById("active-player-chip"),
     answerInput: document.getElementById("answer-input"),
     submit: document.getElementById("btn-submit"),
@@ -149,18 +149,24 @@
 
   function buildDeck(mode, table, player) {
     const facts = [];
-    if (mode === "single") {
-      for (let a = 1; a <= 10; a++) {
-        facts.push([a, table]);
-      }
-    } else {
+    const tables = Array.isArray(mode) ? mode : [table];
+    const allTables = tables.length === 10;
+    if (allTables) {
       for (let a = 1; a <= 10; a++) {
         for (let b = 1; b <= 10; b++) {
           facts.push([a, b]);
         }
       }
       shuffleArray(facts);
-      facts.splice(20); // limiter pour des sessions courtes et variées
+      facts.splice(20); // session courte
+    } else {
+      tables.forEach((t) => {
+        for (let a = 1; a <= 10; a++) {
+          facts.push([a, t]);
+        }
+      });
+      shuffleArray(facts);
+      if (facts.length > 25) facts.splice(25);
     }
     return facts.map(([a, b]) => {
       const key = `${a}|${b}`;
@@ -190,11 +196,12 @@
       alert("Choisis ou crée un joueur avant de commencer.");
       return;
     }
-    const deck = buildDeck(params.mode, params.table, player);
+    const deck = buildDeck(params.tables, null, player);
     shuffleArray(deck);
     session = {
-      mode: params.mode,
-      table: params.table,
+      mode: params.tables.length === 10 ? "mixed" : params.tables.length > 1 ? "multi" : "single",
+      table: params.tables.length === 1 ? params.tables[0] : null,
+      tables: params.tables,
       queue: deck,
       asked: 0,
       correct: 0,
@@ -352,6 +359,7 @@
         incorrect: session.incorrect,
         mode: session.mode,
         table: session.table,
+        tables: session.tables,
         finishedAt: new Date().toISOString(),
         attempts: session.history.slice(), // shallow copy for persistence
       };
@@ -481,17 +489,16 @@
     showPanel("mode");
   });
 
-  els.tableRange.addEventListener("input", (e) => {
-    els.tableValue.textContent = e.target.value;
-  });
-
   els.beginSession.addEventListener("click", () => {
-    const mode = document.querySelector('input[name="mode"]:checked').value;
-    const table = Number(els.tableRange.value);
+    const tables = getSelectedTables();
+    if (tables.length === 0) {
+      alert("Choisis au moins une table.");
+      return;
+    }
     store.settings = store.settings || { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
     store.settings.timerEnabled = Boolean(els.timerToggle.checked);
     saveStore();
-    startSession({ mode, table });
+    startSession({ tables });
   });
 
   els.answerInput.addEventListener("keydown", (e) => {
@@ -545,6 +552,33 @@
     store.settings.timerEnabled = Boolean(els.timerToggle.checked);
     saveStore();
   });
+
+  function getSelectedTables() {
+    const boxes = els.tableCheckboxes.querySelectorAll('input[type="checkbox"]');
+    const chosen = [];
+    boxes.forEach((box) => {
+      if (box.checked) chosen.push(Number(box.value));
+    });
+    if (els.allTablesToggle.checked) {
+      return [1,2,3,4,5,6,7,8,9,10];
+    }
+    return chosen;
+  }
+
+  function syncAllToggle() {
+    const boxes = els.tableCheckboxes.querySelectorAll('input[type="checkbox"]');
+    const allChecked = Array.from(boxes).every((b) => b.checked);
+    els.allTablesToggle.checked = allChecked;
+  }
+
+  els.allTablesToggle.addEventListener("change", () => {
+    const boxes = els.tableCheckboxes.querySelectorAll('input[type="checkbox"]');
+    boxes.forEach((box) => {
+      box.checked = els.allTablesToggle.checked;
+    });
+  });
+
+  els.tableCheckboxes.addEventListener("change", syncAllToggle);
 
   document.addEventListener("pointerdown", ensureUserInteraction, { once: true });
 

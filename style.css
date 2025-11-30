@@ -218,9 +218,24 @@ label {
   font-weight: 600;
 }
 
+label input[type="checkbox"] {
+  transform: scale(1.1);
+}
+
 label.inline {
   display: flex;
   align-items: center;
+  gap: 10px;
+}
+
+.form-help {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
 }
 

@@ -62,19 +62,22 @@
       <div class="card">
         <h2>Choisir le mode</h2>
         <div class="form-row">
-          <label>
-            <input type="radio" name="mode" value="single" checked>
-            Table unique
-          </label>
-          <div class="slider-row">
-            <label for="table-range">Table : <span id="table-value">7</span></label>
-            <input id="table-range" type="range" min="1" max="10" value="7">
+          <div class="form-help">Choisis une ou plusieurs tables (ou coche tout pour mélanger).</div>
+          <div class="checkbox-grid" id="table-checkboxes">
+            <label><input type="checkbox" value="1">Table 1</label>
+            <label><input type="checkbox" value="2">Table 2</label>
+            <label><input type="checkbox" value="3">Table 3</label>
+            <label><input type="checkbox" value="4">Table 4</label>
+            <label><input type="checkbox" value="5">Table 5</label>
+            <label><input type="checkbox" value="6">Table 6</label>
+            <label><input type="checkbox" value="7" checked>Table 7</label>
+            <label><input type="checkbox" value="8">Table 8</label>
+            <label><input type="checkbox" value="9">Table 9</label>
+            <label><input type="checkbox" value="10">Table 10</label>
           </div>
-        </div>
-        <div class="form-row">
-          <label>
-            <input type="radio" name="mode" value="mixed">
-            Mélangé (1 à 10)
+          <label class="inline">
+            <input type="checkbox" id="all-tables-toggle">
+            Tout (mélangé 1 à 10)
           </label>
         </div>
         <div class="form-row">
