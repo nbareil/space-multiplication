@@ -94,6 +94,9 @@
   }
 
   function showPanel(name) {
+    if (name === "player") {
+      updatePlayerSelect();
+    }
     Object.entries(panels).forEach(([key, el]) => {
       el.classList.toggle("active", key === name);
       el.classList.toggle("hidden", key !== name);
@@ -120,6 +123,9 @@
       select.appendChild(opt);
     });
     if (store.activePlayerId) {
+      select.value = store.activePlayerId;
+    } else if (store.players.length > 0) {
+      setActivePlayer(store.players[0].id);
       select.value = store.activePlayerId;
     }
   }
@@ -643,6 +649,10 @@
 
   // Initial paint
   updatePlayerSelect();
-  setActivePlayer(store.activePlayerId);
+  if (store.activePlayerId) {
+    setActivePlayer(store.activePlayerId);
+  } else if (store.players.length > 0) {
+    setActivePlayer(store.players[0].id);
+  }
   updateIdleTimerLabel();
 })();
