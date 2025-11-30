@@ -301,12 +301,9 @@
 
   function requeueMiss(card) {
     if (!session) return;
-    const cloneA = { ...card };
-    const cloneB = { ...card };
-    const firstSpot = Math.min(2, session.queue.length);
-    session.queue.splice(firstSpot, 0, cloneA);
-    const secondSpot = Math.min(4, session.queue.length);
-    session.queue.splice(secondSpot, 0, cloneB);
+    const clone = { ...card };
+    const spot = Math.min(2, session.queue.length);
+    session.queue.splice(spot, 0, clone);
   }
 
   function finalizeAttempt({ submittedAnswer = null, expired = false }) {
