@@ -46,6 +46,8 @@
   const STORAGE_KEY = "space-times-store";
   const DEFAULT_TARGET = 15;
   const DEFAULT_TIMER_SECONDS = 15;
+  const MIN_WEIGHT = 1;
+  const MAX_WEIGHT = 6;
 
   let store = loadStore();
   let session = null;
@@ -192,7 +194,7 @@
     return facts.map(([a, b]) => {
       const key = `${a}|${b}`;
       const stats = player?.factStreaks?.[key] || { streak: 0, misses: 0 };
-      const base = Math.max(1, 5 - stats.streak + (stats.misses > 0 ? 1 : 0));
+      const base = clampWeight(5 - stats.streak + (stats.misses > 0 ? 1 : 0));
       return {
         a,
         b,
@@ -296,7 +298,8 @@
     const needsMore = card.streak < 3 && session.asked < session.targetQuestions;
     if (!needsMore) return;
     const clone = { ...card };
-    const insertAt = Math.min(session.queue.length, Math.floor(session.queue.length * 0.6) + 1);
+    const depth = Math.max(1, Math.min(session.queue.length, card.dueWeight));
+    const insertAt = Math.min(session.queue.length, session.queue.length - depth);
     session.queue.splice(insertAt, 0, clone);
   }
 
@@ -334,6 +337,7 @@
       playSound("ok");
       card.streak += 1;
       card.lastResult = "correct";
+      card.dueWeight = clampWeight((card.dueWeight || 3) + 1);
       maybeReinsertCard(card);
     } else {
       session.incorrect += 1;
@@ -345,6 +349,7 @@
       playSound("nope");
       card.streak = 0;
       card.lastResult = "wrong";
+      card.dueWeight = MIN_WEIGHT;
       requeueMiss(card);
     }
     renderSessionMeta();
@@ -673,6 +678,10 @@
     setTimeout(() => {
       els.answerInput?.focus();
     }, 0);
+  }
+
+  function clampWeight(n) {
+    return Math.max(MIN_WEIGHT, Math.min(MAX_WEIGHT, Math.round(n)));
   }
 
   // Initial paint
