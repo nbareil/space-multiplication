@@ -52,6 +52,7 @@
   let lastSessionParams = null;
   let userInteracted = false;
   let audioCtx = null;
+  let audioInitFailed = false;
 
   function clampTimer(value) {
     const n = Number(value);
@@ -451,28 +452,50 @@
   }
 
   function playSound(kind) {
-    if (!userInteracted) return;
+    if (!userInteracted || audioInitFailed) return;
     const player = getActivePlayer();
     const soundOn = player?.settings?.soundOn ?? true;
     if (!soundOn) return;
-    if (!audioCtx) {
-      const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
-      audioCtx = new AudioContext();
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
     }
-    const ctx = audioCtx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.value = kind === "ok" ? 680 : 260;
-    gain.gain.value = 0.12;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    const now = ctx.currentTime;
-    gain.gain.setValueAtTime(0.12, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-    osc.start(now);
-    osc.stop(now + 0.25);
+    try {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = kind === "ok" ? 680 : 260;
+      gain.gain.value = 0.12;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const now = ctx.currentTime;
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } catch (e) {
+      audioInitFailed = true;
+      console.warn("Audio playback failed, sound disabled for this session.", e);
+    }
+  }
+
+  function getAudioContext() {
+    if (audioInitFailed) return null;
+    if (audioCtx) return audioCtx;
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) {
+        audioInitFailed = true;
+        return null;
+      }
+      audioCtx = new AudioContext();
+      return audioCtx;
+    } catch (e) {
+      audioInitFailed = true;
+      console.warn("Audio context unavailable.", e);
+      return null;
+    }
   }
 
   function ensureUserInteraction() {
