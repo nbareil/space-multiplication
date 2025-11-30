@@ -61,6 +61,9 @@
       }
       const parsed = JSON.parse(raw);
       parsed.players ||= [];
+      parsed.players.forEach((p) => {
+        p.sessions ||= [];
+      });
       parsed.settings ||= { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
       return parsed;
     } catch (e) {
@@ -289,14 +292,15 @@
     const result = expired ? "timeout" : isCorrect ? "correct" : "wrong";
     const durationMs = Math.max(0, Date.now() - (session.currentStart || Date.now()));
     session.asked += 1;
-    const attempt = {
-      a: card.a,
-      b: card.b,
-      answer: submittedAnswer,
-      correctAnswer,
-      result,
-      durationMs,
-    };
+      const attempt = {
+        a: card.a,
+        b: card.b,
+        answer: submittedAnswer,
+        correctAnswer,
+        result,
+        durationMs,
+        hintUsed: false,
+      };
     session.history.push(attempt);
     if (result === "correct") {
       session.correct += 1;
@@ -342,14 +346,21 @@
     if (player && session) {
       clearCountdown();
       updatePlayerStats(player, session.history);
-      player.lastSession = {
+      const sessionRecord = {
         asked: session.asked,
         correct: session.correct,
         incorrect: session.incorrect,
         mode: session.mode,
         table: session.table,
         finishedAt: new Date().toISOString(),
+        attempts: session.history.slice(), // shallow copy for persistence
       };
+      player.lastSession = sessionRecord;
+      player.sessions = player.sessions || [];
+      player.sessions.unshift(sessionRecord);
+      if (player.sessions.length > 10) {
+        player.sessions.length = 10; // garder les 10 dernières
+      }
       saveStore();
     }
     renderSummary();
