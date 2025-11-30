@@ -270,7 +270,7 @@
     const { a, b } = session.current;
     els.prompt.textContent = `${a} × ${b} = ?`;
     els.answerInput.value = "";
-    els.answerInput.focus();
+    focusAnswer();
   }
 
   function renderSessionMeta() {
@@ -354,12 +354,14 @@
     } else if (!expired) {
       // Laisser l'enfant retenter la même opération (mauvaise réponse)
       els.answerInput.value = "";
+      focusAnswer();
       session.currentDone = false;
       session.currentStart = Date.now();
       startCountdown();
     } else {
       // Timeout : rester sur la question sans relancer le chrono
       els.answerInput.value = "";
+      focusAnswer();
       session.currentDone = false;
       els.timerLabel.textContent = "Temps : expiré";
       els.timerLabel.classList.add("muted");
@@ -666,6 +668,12 @@
   });
 
   document.addEventListener("pointerdown", ensureUserInteraction, { once: true });
+
+  function focusAnswer() {
+    setTimeout(() => {
+      els.answerInput?.focus();
+    }, 0);
+  }
 
   // Initial paint
   updatePlayerSelect();

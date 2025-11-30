@@ -1,13 +1,13 @@
 # Space Times
 
-Kid-friendly multiplication trainer (tables 1–10) built with plain HTML/CSS/JS. French-first UX, responsive, offline (no backend), with spaced repetition, per-question timer, keypad/keyboard input, and local persistence per joueur.
+Kid-friendly multiplication trainer (tables 1–10) built with plain HTML/CSS/JS. French-first UX, responsive, offline-only (no backend), spaced repetition for missed facts, optional per-question timer, keypad/keyboard input, and per-player local persistence (streaks, sessions, settings).
 
-## Déploiement GitHub Pages
+## GitHub Pages Deployment
 
-- La branche `main` déclenche automatiquement le workflow GitHub Actions `.github/workflows/pages.yml`.
-- Le workflow copie `index.html`, `style.css` et `script.js` dans `_site`, puis publie sur GitHub Pages.
-- Déclenchement manuel possible via l’onglet *Actions* (`Deploy to GitHub Pages` → *Run workflow*).
+- Branch `main` triggers the Pages workflow: `.github/workflows/pages.yml`.
+- The workflow copies `index.html`, `style.css`, and `script.js` into `_site`, then deploys to GitHub Pages.
+- You can also run it manually from *Actions* → **Deploy to GitHub Pages** → *Run workflow*.
 
-## Développement local
+## Local Development
 
-Ouvrez simplement `index.html` dans un navigateur moderne (aucun build ni backend).
+Just open `index.html` in a modern browser—no build or backend required.
