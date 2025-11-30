@@ -25,6 +25,7 @@
     activePlayerChip: document.getElementById("active-player-chip"),
     answerInput: document.getElementById("answer-input"),
     submit: document.getElementById("btn-submit"),
+    playHome: document.getElementById("btn-play-home"),
     feedback: document.getElementById("feedback"),
     prompt: document.getElementById("prompt-text"),
     progress: document.getElementById("progress-label"),
@@ -529,6 +530,23 @@
 
   els.home.addEventListener("click", () => {
     showPanel("landing");
+  });
+
+  function exitToHome() {
+    clearCountdown();
+    session = null;
+    els.feedback.textContent = "";
+    els.feedback.className = "feedback";
+    els.answerInput.value = "";
+    els.timerLabel.textContent = (store.settings?.timerEnabled ?? true)
+      ? `Temps : ${DEFAULT_TIMER_SECONDS}s`
+      : "Temps : ∞";
+    els.timerLabel.classList.add("muted");
+    showPanel("landing");
+  }
+
+  els.playHome.addEventListener("click", () => {
+    exitToHome();
   });
 
   els.replay.addEventListener("click", () => {

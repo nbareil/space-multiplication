@@ -270,6 +270,11 @@ input[type="range"] {
   gap: 12px;
 }
 
+.play-header {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .prompt {
   font-size: 40px;
   font-weight: 800;
