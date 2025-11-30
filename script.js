@@ -38,6 +38,7 @@
     soundToggle: document.getElementById("sound-toggle"),
     timerToggle: document.getElementById("timer-toggle"),
     timerLabel: document.getElementById("timer-label"),
+    timerSeconds: document.getElementById("timer-seconds"),
   };
 
   const STORAGE_KEY = "space-times-store";
@@ -49,6 +50,14 @@
   let lastSessionParams = null;
   let userInteracted = false;
   let audioCtx = null;
+
+  function clampTimer(value) {
+    const n = Number(value);
+    if (Number.isFinite(n)) {
+      return Math.min(60, Math.max(5, Math.round(n)));
+    }
+    return DEFAULT_TIMER_SECONDS;
+  }
 
   function loadStore() {
     try {
@@ -66,6 +75,7 @@
         p.sessions ||= [];
       });
       parsed.settings ||= { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
+      parsed.settings.timerSeconds = clampTimer(parsed.settings.timerSeconds);
       return parsed;
     } catch (e) {
       console.warn("Impossible de lire le stockage, réinitialisation.", e);
@@ -131,6 +141,7 @@
     }
     const timerOn = store.settings?.timerEnabled ?? true;
     els.timerToggle.checked = timerOn;
+    els.timerSeconds.value = clampTimer(store.settings?.timerSeconds ?? DEFAULT_TIMER_SECONDS);
   }
 
   function addPlayer(name) {
@@ -210,7 +221,7 @@
       history: [],
       targetQuestions: DEFAULT_TARGET,
       timerEnabled: store.settings?.timerEnabled ?? true,
-      timerSeconds: store.settings?.timerSeconds ?? DEFAULT_TIMER_SECONDS,
+      timerSeconds: clampTimer(store.settings?.timerSeconds ?? DEFAULT_TIMER_SECONDS),
       timers: { tick: null, expiry: null },
       currentStart: null,
       currentDone: false,
@@ -498,6 +509,8 @@
     }
     store.settings = store.settings || { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
     store.settings.timerEnabled = Boolean(els.timerToggle.checked);
+    store.settings.timerSeconds = clampTimer(els.timerSeconds.value || DEFAULT_TIMER_SECONDS);
+    els.timerSeconds.value = store.settings.timerSeconds;
     saveStore();
     startSession({ tables });
   });
@@ -538,10 +551,7 @@
     els.feedback.textContent = "";
     els.feedback.className = "feedback";
     els.answerInput.value = "";
-    els.timerLabel.textContent = (store.settings?.timerEnabled ?? true)
-      ? `Temps : ${DEFAULT_TIMER_SECONDS}s`
-      : "Temps : ∞";
-    els.timerLabel.classList.add("muted");
+    updateIdleTimerLabel();
     showPanel("landing");
   }
 
@@ -569,6 +579,15 @@
     store.settings = store.settings || { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
     store.settings.timerEnabled = Boolean(els.timerToggle.checked);
     saveStore();
+    updateIdleTimerLabel();
+  });
+
+  els.timerSeconds.addEventListener("input", () => {
+    store.settings = store.settings || { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
+    store.settings.timerSeconds = clampTimer(els.timerSeconds.value || DEFAULT_TIMER_SECONDS);
+    els.timerSeconds.value = store.settings.timerSeconds;
+    saveStore();
+    updateIdleTimerLabel();
   });
 
   function getSelectedTables() {
@@ -598,12 +617,22 @@
 
   els.tableCheckboxes.addEventListener("change", syncAllToggle);
 
+  function updateIdleTimerLabel() {
+    const enabled = store.settings?.timerEnabled ?? true;
+    const secs = clampTimer(store.settings?.timerSeconds ?? DEFAULT_TIMER_SECONDS);
+    if (enabled) {
+      els.timerLabel.textContent = `Temps : ${secs}s`;
+      els.timerLabel.classList.remove("muted");
+    } else {
+      els.timerLabel.textContent = "Temps : ∞";
+      els.timerLabel.classList.add("muted");
+    }
+  }
+
   document.addEventListener("pointerdown", ensureUserInteraction, { once: true });
 
   // Initial paint
   updatePlayerSelect();
   setActivePlayer(store.activePlayerId);
-  els.timerLabel.textContent = (store.settings?.timerEnabled ?? true)
-    ? `Temps : ${DEFAULT_TIMER_SECONDS}s`
-    : "Temps : ∞";
+  updateIdleTimerLabel();
 })();

@@ -253,6 +253,16 @@ select, input[type="text"], input[type="number"] {
   gap: 10px;
 }
 
+.form-inline.tight {
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.small-input {
+  max-width: 100px;
+}
+
 .slider-row {
   display: flex;
   align-items: center;

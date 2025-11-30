@@ -85,6 +85,10 @@
             <input type="checkbox" id="timer-toggle" checked>
             Limiter le temps par question (15s)
           </label>
+          <div class="form-inline tight">
+            <label for="timer-seconds">Durée limite (secondes)</label>
+            <input id="timer-seconds" type="number" min="5" max="60" step="1" value="15" class="small-input">
+          </div>
         </div>
         <div class="actions">
           <button id="btn-begin-session" class="btn primary">Lancer la session</button>
