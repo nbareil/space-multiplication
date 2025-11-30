@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Space Times</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">⏳✖️</span>
+      <div>
+        <div class="title">Space Times</div>
+        <div class="subtitle">Entraîneur de multiplications</div>
+      </div>
+    </div>
+    <div class="status">
+      <span id="active-player-chip" class="chip muted">Joueur : aucun</span>
+      <label class="switch">
+        <input type="checkbox" id="sound-toggle">
+        <span class="slider"></span>
+      </label>
+      <span class="switch-label">Son</span>
+    </div>
+  </header>
+
+  <main>
+    <section id="panel-landing" class="panel active">
+      <div class="card hero">
+        <h1>Prêt à jouer ?</h1>
+        <p>Entraîne-toi aux tables de multiplication en sessions courtes, avec rappels des questions manquées.</p>
+        <div class="actions">
+          <button id="btn-start" class="btn primary">Commencer</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-player" class="panel hidden">
+      <div class="card">
+        <h2>Choisir un joueur</h2>
+        <div class="form-row">
+          <label for="player-select">Joueurs enregistrés</label>
+          <select id="player-select"></select>
+        </div>
+        <div class="actions">
+          <button id="btn-choose-player" class="btn primary">Continuer</button>
+          <button id="btn-back-from-player" class="btn ghost">Retour</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Ajouter un nouveau joueur</h3>
+        <form id="player-add-form" class="form-inline">
+          <input id="new-player-name" type="text" placeholder="Prénom ou pseudo" required minlength="1" maxlength="20">
+          <button class="btn secondary" type="submit">Ajouter</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="panel-mode" class="panel hidden">
+      <div class="card">
+        <h2>Choisir le mode</h2>
+        <div class="form-row">
+          <label>
+            <input type="radio" name="mode" value="single" checked>
+            Table unique
+          </label>
+          <div class="slider-row">
+            <label for="table-range">Table : <span id="table-value">7</span></label>
+            <input id="table-range" type="range" min="1" max="10" value="7">
+          </div>
+        </div>
+        <div class="form-row">
+          <label>
+            <input type="radio" name="mode" value="mixed">
+            Mélangé (1 à 10)
+          </label>
+        </div>
+        <div class="actions">
+          <button id="btn-begin-session" class="btn primary">Lancer la session</button>
+          <button id="btn-back-from-mode" class="btn ghost">Retour</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-play" class="panel hidden">
+      <div class="card play-card">
+        <div class="prompt" id="prompt-text">3 × 7 = ?</div>
+        <div class="input-row">
+          <input id="answer-input" type="number" inputmode="numeric" autocomplete="off" min="0" placeholder="Réponse">
+          <button id="btn-submit" class="btn primary">Valider</button>
+        </div>
+        <div class="keypad" id="keypad">
+          <button data-key="7">7</button>
+          <button data-key="8">8</button>
+          <button data-key="9">9</button>
+          <button data-key="4">4</button>
+          <button data-key="5">5</button>
+          <button data-key="6">6</button>
+          <button data-key="1">1</button>
+          <button data-key="2">2</button>
+          <button data-key="3">3</button>
+          <button data-key="0" class="wide">0</button>
+          <button data-key="back" class="ghost small">Effacer</button>
+        </div>
+        <div class="feedback" id="feedback"></div>
+        <div class="progress-row">
+          <span id="progress-label">Question 0 / 0</span>
+          <span id="score-label">Score : 0 ✓ / 0 ✗</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-summary" class="panel hidden">
+      <div class="card">
+        <h2>Résumé</h2>
+        <p id="summary-text"></p>
+        <div class="summary-grid">
+          <div class="stat">
+            <div class="stat-label">Réussites</div>
+            <div class="stat-value" id="summary-correct">0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Erreurs</div>
+            <div class="stat-value" id="summary-wrong">0</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Précision</div>
+            <div class="stat-value" id="summary-accuracy">0%</div>
+          </div>
+        </div>
+        <div class="actions">
+          <button id="btn-replay" class="btn primary">Rejouer</button>
+          <button id="btn-home" class="btn ghost">Accueil</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
