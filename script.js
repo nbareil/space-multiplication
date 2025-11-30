@@ -19,6 +19,7 @@
     beginSession: document.getElementById("btn-begin-session"),
     replay: document.getElementById("btn-replay"),
     home: document.getElementById("btn-home"),
+    parentBack: document.getElementById("btn-parent-back"),
     playerSelect: document.getElementById("player-select"),
     addPlayerForm: document.getElementById("player-add-form"),
     newPlayerName: document.getElementById("new-player-name"),
@@ -44,6 +45,7 @@
     hintToggle: document.getElementById("hint-toggle"),
     hintArea: document.getElementById("hint-area"),
     hintOptions: document.getElementById("hint-options"),
+    opsGrid: document.getElementById("ops-grid"),
   };
 
   const STORAGE_KEY = "space-times-store";
@@ -466,6 +468,60 @@
     });
   }
 
+  function renderOpsGrid() {
+    const player = getActivePlayer();
+    els.opsGrid.innerHTML = "";
+    if (!player) {
+      const msg = document.createElement("div");
+      msg.textContent = "Aucun joueur sélectionné.";
+      els.opsGrid.appendChild(msg);
+      return;
+    }
+    const cards = [];
+    for (let a = 1; a <= 10; a++) {
+      for (let b = 1; b <= 10; b++) {
+        const key = `${a}|${b}`;
+        const stats = player.factStreaks?.[key] || { streak: 0, misses: 0 };
+        const attempts = (player.sessions || []).reduce((acc, sess) => {
+          const match = (sess.attempts || []).filter((att) => att.a === a && att.b === b);
+          return acc.concat(match);
+        }, []);
+        const success = attempts.filter((att) => att.result === "correct").length;
+        const fail = attempts.filter((att) => att.result !== "correct").length;
+        cards.push({ a, b, success, fail, streak: stats.streak || 0 });
+      }
+    }
+    cards.forEach((card) => {
+      const div = document.createElement("div");
+      div.className = "op-card";
+      const title = document.createElement("div");
+      title.className = "op-title";
+      title.textContent = `${card.a} × ${card.b}`;
+      const statsRow = document.createElement("div");
+      statsRow.className = "op-stats";
+
+      const pillSucc = document.createElement("span");
+      pillSucc.className = "pill good";
+      pillSucc.textContent = `${card.success} ✓`;
+
+      const pillFail = document.createElement("span");
+      pillFail.className = "pill bad";
+      pillFail.textContent = `${card.fail} ✗`;
+
+      const streak = document.createElement("span");
+      streak.className = "pill";
+      streak.textContent = `Streak: ${card.streak}`;
+
+      statsRow.appendChild(pillSucc);
+      statsRow.appendChild(pillFail);
+      statsRow.appendChild(streak);
+
+      div.appendChild(title);
+      div.appendChild(statsRow);
+      els.opsGrid.appendChild(div);
+    });
+  }
+
   function renderSummary() {
     if (!session) return;
     const { correct, incorrect, targetQuestions } = session;
@@ -643,6 +699,23 @@
   els.home.addEventListener("click", () => {
     showPanel("landing");
   });
+
+  els.parentBack.addEventListener("click", () => {
+    showPanel("landing");
+  });
+
+  els.activePlayerChip.addEventListener("click", () => {
+    showPanel("player");
+  });
+
+  const parentButton = document.createElement("button");
+  parentButton.textContent = "Espace parent";
+  parentButton.className = "btn ghost small";
+  parentButton.addEventListener("click", () => {
+    renderOpsGrid();
+    showPanel("parent");
+  });
+  document.querySelector(".status")?.appendChild(parentButton);
 
   function exitToHome() {
     clearCountdown();

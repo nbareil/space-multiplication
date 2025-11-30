@@ -423,6 +423,41 @@ input[type="range"] {
   font-weight: 800;
 }
 
+.ops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+.op-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 10px;
+}
+
+.op-title {
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.op-stats {
+  display: flex;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.pill.good {
+  border-color: rgba(110, 231, 162, 0.6);
+  color: var(--success);
+}
+
+.pill.bad {
+  border-color: rgba(255, 92, 138, 0.6);
+  color: var(--error);
+}
+
 @media (max-width: 640px) {
   .topbar {
     flex-direction: column;
