@@ -11,9 +11,11 @@
 
   const els = {
     start: document.getElementById("btn-start"),
+    startPlayer: document.getElementById("btn-start-player"),
     choosePlayer: document.getElementById("btn-choose-player"),
     backFromPlayer: document.getElementById("btn-back-from-player"),
     backFromMode: document.getElementById("btn-back-from-mode"),
+    backToPlayer: document.getElementById("btn-back-to-player"),
     beginSession: document.getElementById("btn-begin-session"),
     replay: document.getElementById("btn-replay"),
     home: document.getElementById("btn-home"),
@@ -479,9 +481,13 @@
   els.start.addEventListener("click", () => {
     showPanel("player");
   });
+  els.startPlayer.addEventListener("click", () => {
+    showPanel("player");
+  });
 
   els.backFromPlayer.addEventListener("click", () => showPanel("landing"));
   els.backFromMode.addEventListener("click", () => showPanel("player"));
+  els.backToPlayer.addEventListener("click", () => showPanel("player"));
 
   els.addPlayerForm.addEventListener("submit", (ev) => {
     ev.preventDefault();

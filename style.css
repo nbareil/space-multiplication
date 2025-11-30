@@ -146,7 +146,7 @@ main {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 20px;
+  padding: 22px;
   margin-bottom: 16px;
   box-shadow: var(--shadow);
 }
@@ -201,6 +201,7 @@ p {
 
 .btn.small {
   padding: 8px 12px;
+  min-width: 90px;
 }
 
 .btn:active {
@@ -237,6 +238,13 @@ label.inline {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
+}
+
+.nav-row {
+  display: flex;
+  justify-content: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 select, input[type="text"], input[type="number"] {
