@@ -218,6 +218,12 @@ label {
   font-weight: 600;
 }
 
+label.inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 select, input[type="text"], input[type="number"] {
   border-radius: 12px;
   border: 1px solid var(--border);
@@ -304,8 +310,24 @@ input[type="range"] {
 .progress-row {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   color: var(--muted);
   font-size: 16px;
+  font-weight: 700;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 16px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.pill.muted {
+  color: var(--muted);
 }
 
 .summary-grid {

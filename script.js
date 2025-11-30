@@ -35,10 +35,13 @@
     summaryWrong: document.getElementById("summary-wrong"),
     summaryAccuracy: document.getElementById("summary-accuracy"),
     soundToggle: document.getElementById("sound-toggle"),
+    timerToggle: document.getElementById("timer-toggle"),
+    timerLabel: document.getElementById("timer-label"),
   };
 
   const STORAGE_KEY = "space-times-store";
   const DEFAULT_TARGET = 15;
+  const DEFAULT_TIMER_SECONDS = 15;
 
   let store = loadStore();
   let session = null;
@@ -50,14 +53,23 @@
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
-        return { players: [], activePlayerId: null };
+        return {
+          players: [],
+          activePlayerId: null,
+          settings: { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS },
+        };
       }
       const parsed = JSON.parse(raw);
       parsed.players ||= [];
+      parsed.settings ||= { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
       return parsed;
     } catch (e) {
       console.warn("Impossible de lire le stockage, réinitialisation.", e);
-      return { players: [], activePlayerId: null };
+      return {
+        players: [],
+        activePlayerId: null,
+        settings: { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS },
+      };
     }
   }
 
@@ -113,6 +125,8 @@
       els.activePlayerChip.textContent = "Joueur : aucun";
       els.activePlayerChip.classList.add("muted");
     }
+    const timerOn = store.settings?.timerEnabled ?? true;
+    els.timerToggle.checked = timerOn;
   }
 
   function addPlayer(name) {
@@ -184,6 +198,11 @@
       incorrect: 0,
       history: [],
       targetQuestions: DEFAULT_TARGET,
+      timerEnabled: store.settings?.timerEnabled ?? true,
+      timerSeconds: store.settings?.timerSeconds ?? DEFAULT_TIMER_SECONDS,
+      timers: { tick: null, expiry: null },
+      currentStart: null,
+      currentDone: false,
     };
     lastSessionParams = { ...params };
     els.feedback.textContent = "";
@@ -201,7 +220,10 @@
     }
     shuffleTail(session.queue, 4);
     session.current = session.queue.shift();
+    session.currentDone = false;
+    session.currentStart = Date.now();
     session.current.seen += 1;
+    startCountdown();
     renderPrompt();
   }
 
@@ -227,6 +249,7 @@
 
   function handleSubmit() {
     if (!session?.current) return;
+    if (session.currentDone) return;
     const raw = els.answerInput.value.trim();
     if (raw === "") {
       els.feedback.textContent = "Entre une réponse pour valider.";
@@ -234,37 +257,7 @@
       return;
     }
     const value = Number(raw);
-    const card = session.current;
-    const correctAnswer = card.a * card.b;
-    const isCorrect = value === correctAnswer;
-    session.asked += 1;
-    const attempt = {
-      a: card.a,
-      b: card.b,
-      answer: value,
-      correctAnswer,
-      result: isCorrect ? "correct" : "wrong",
-    };
-    session.history.push(attempt);
-    if (isCorrect) {
-      session.correct += 1;
-      els.feedback.textContent = "Bravo !";
-      els.feedback.className = "feedback ok";
-      playSound("ok");
-      card.streak += 1;
-      card.lastResult = "correct";
-      maybeReinsertCard(card);
-    } else {
-      session.incorrect += 1;
-      els.feedback.textContent = `Raté ! La bonne réponse : ${correctAnswer}`;
-      els.feedback.className = "feedback nope";
-      playSound("nope");
-      card.streak = 0;
-      card.lastResult = "wrong";
-      requeueMiss(card);
-    }
-    renderSessionMeta();
-    nextCard();
+    finalizeAttempt({ submittedAnswer: value });
   }
 
   function maybeReinsertCard(card) {
@@ -286,9 +279,68 @@
     session.queue.splice(secondSpot, 0, cloneB);
   }
 
+  function finalizeAttempt({ submittedAnswer = null, expired = false }) {
+    if (!session?.current || session.currentDone) return;
+    clearCountdown();
+    session.currentDone = true;
+    const card = session.current;
+    const correctAnswer = card.a * card.b;
+    const isCorrect = !expired && submittedAnswer === correctAnswer;
+    const result = expired ? "timeout" : isCorrect ? "correct" : "wrong";
+    const durationMs = Math.max(0, Date.now() - (session.currentStart || Date.now()));
+    session.asked += 1;
+    const attempt = {
+      a: card.a,
+      b: card.b,
+      answer: submittedAnswer,
+      correctAnswer,
+      result,
+      durationMs,
+    };
+    session.history.push(attempt);
+    if (result === "correct") {
+      session.correct += 1;
+      els.feedback.textContent = "Bravo !";
+      els.feedback.className = "feedback ok";
+      playSound("ok");
+      card.streak += 1;
+      card.lastResult = "correct";
+      maybeReinsertCard(card);
+    } else {
+      session.incorrect += 1;
+      const message = expired
+        ? `Temps écoulé ! Réponse : ${correctAnswer}`
+        : `Raté ! La bonne réponse : ${correctAnswer}`;
+      els.feedback.textContent = message;
+      els.feedback.className = "feedback nope";
+      playSound("nope");
+      card.streak = 0;
+      card.lastResult = "wrong";
+      requeueMiss(card);
+    }
+    renderSessionMeta();
+    if (result === "correct") {
+      session.currentDone = false;
+      nextCard();
+    } else if (!expired) {
+      // Laisser l'enfant retenter la même opération (mauvaise réponse)
+      els.answerInput.value = "";
+      session.currentDone = false;
+      session.currentStart = Date.now();
+      startCountdown();
+    } else {
+      // Timeout : rester sur la question sans relancer le chrono
+      els.answerInput.value = "";
+      session.currentDone = false;
+      els.timerLabel.textContent = "Temps : expiré";
+      els.timerLabel.classList.add("muted");
+    }
+  }
+
   function endSession() {
     const player = getActivePlayer();
     if (player && session) {
+      clearCountdown();
       updatePlayerStats(player, session.history);
       player.lastSession = {
         asked: session.asked,
@@ -330,6 +382,36 @@
     els.summaryWrong.textContent = incorrect;
     els.summaryAccuracy.textContent = `${accuracy}%`;
     els.progress.textContent = `Question ${session.asked} / ${targetQuestions}`;
+  }
+
+  function startCountdown() {
+    clearCountdown();
+    if (!session.timerEnabled) {
+      els.timerLabel.textContent = "Temps : ∞";
+      els.timerLabel.classList.add("muted");
+      return;
+    }
+    els.timerLabel.classList.remove("muted");
+    const totalMs = (session.timerSeconds || DEFAULT_TIMER_SECONDS) * 1000;
+    const endAt = Date.now() + totalMs;
+    const update = () => {
+      const remaining = Math.max(0, endAt - Date.now());
+      const secs = Math.ceil(remaining / 1000);
+      els.timerLabel.textContent = `Temps : ${secs}s`;
+    };
+    update();
+    session.timers.tick = setInterval(update, 200);
+    session.timers.expiry = setTimeout(() => {
+      finalizeAttempt({ submittedAnswer: null, expired: true });
+    }, totalMs);
+  }
+
+  function clearCountdown() {
+    if (!session?.timers) return;
+    if (session.timers.tick) clearInterval(session.timers.tick);
+    if (session.timers.expiry) clearTimeout(session.timers.expiry);
+    session.timers.tick = null;
+    session.timers.expiry = null;
   }
 
   function playSound(kind) {
@@ -395,6 +477,9 @@
   els.beginSession.addEventListener("click", () => {
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const table = Number(els.tableRange.value);
+    store.settings = store.settings || { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
+    store.settings.timerEnabled = Boolean(els.timerToggle.checked);
+    saveStore();
     startSession({ mode, table });
   });
 
@@ -444,9 +529,18 @@
     saveStore();
   });
 
+  els.timerToggle.addEventListener("change", () => {
+    store.settings = store.settings || { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
+    store.settings.timerEnabled = Boolean(els.timerToggle.checked);
+    saveStore();
+  });
+
   document.addEventListener("pointerdown", ensureUserInteraction, { once: true });
 
   // Initial paint
   updatePlayerSelect();
   setActivePlayer(store.activePlayerId);
+  els.timerLabel.textContent = (store.settings?.timerEnabled ?? true)
+    ? `Temps : ${DEFAULT_TIMER_SECONDS}s`
+    : "Temps : ∞";
 })();

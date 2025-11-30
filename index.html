@@ -77,6 +77,12 @@
             Mélangé (1 à 10)
           </label>
         </div>
+        <div class="form-row">
+          <label class="inline">
+            <input type="checkbox" id="timer-toggle" checked>
+            Limiter le temps par question (15s)
+          </label>
+        </div>
         <div class="actions">
           <button id="btn-begin-session" class="btn primary">Lancer la session</button>
           <button id="btn-back-from-mode" class="btn ghost">Retour</button>
@@ -108,6 +114,7 @@
         <div class="progress-row">
           <span id="progress-label">Question 0 / 0</span>
           <span id="score-label">Score : 0 ✓ / 0 ✗</span>
+          <span id="timer-label" class="pill muted">Temps : ∞</span>
         </div>
       </div>
     </section>
