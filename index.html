@@ -93,6 +93,10 @@
             <label for="timer-seconds">Durée limite (secondes)</label>
             <input id="timer-seconds" type="number" min="5" max="60" step="1" value="15" class="small-input">
           </div>
+          <label class="inline">
+            <input type="checkbox" id="hint-toggle">
+            Proposer un indice 5s avant la fin (3 choix)
+          </label>
         </div>
         <div class="actions">
           <button id="btn-begin-session" class="btn primary">Lancer la session</button>
@@ -125,6 +129,10 @@
           <button data-key="back" class="ghost small">Effacer</button>
         </div>
         <div class="feedback" id="feedback"></div>
+        <div id="hint-area" class="hint hidden">
+          <div class="hint-title">Indice : choisis la bonne réponse</div>
+          <div class="hint-options" id="hint-options"></div>
+        </div>
         <div class="progress-row">
           <span id="progress-label">Question 0 / 0</span>
           <span id="score-label">Score : 0 ✓ / 0 ✗</span>

@@ -41,6 +41,9 @@
     timerToggle: document.getElementById("timer-toggle"),
     timerLabel: document.getElementById("timer-label"),
     timerSeconds: document.getElementById("timer-seconds"),
+    hintToggle: document.getElementById("hint-toggle"),
+    hintArea: document.getElementById("hint-area"),
+    hintOptions: document.getElementById("hint-options"),
   };
 
   const STORAGE_KEY = "space-times-store";
@@ -48,6 +51,7 @@
   const DEFAULT_TIMER_SECONDS = 15;
   const MIN_WEIGHT = 1;
   const MAX_WEIGHT = 6;
+  const HINT_LEAD_MS = 5000;
 
   let store = loadStore();
   let session = null;
@@ -71,7 +75,7 @@
         return {
           players: [],
           activePlayerId: null,
-          settings: { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS },
+          settings: { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS, hintEnabled: false },
         };
       }
       const parsed = JSON.parse(raw);
@@ -79,15 +83,16 @@
       parsed.players.forEach((p) => {
         p.sessions ||= [];
       });
-      parsed.settings ||= { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
+      parsed.settings ||= { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS, hintEnabled: false };
       parsed.settings.timerSeconds = clampTimer(parsed.settings.timerSeconds);
+      parsed.settings.hintEnabled = Boolean(parsed.settings.hintEnabled);
       return parsed;
     } catch (e) {
       console.warn("Impossible de lire le stockage, réinitialisation.", e);
       return {
         players: [],
         activePlayerId: null,
-        settings: { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS },
+        settings: { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS, hintEnabled: false },
       };
     }
   }
@@ -153,6 +158,7 @@
     const timerOn = store.settings?.timerEnabled ?? true;
     els.timerToggle.checked = timerOn;
     els.timerSeconds.value = clampTimer(store.settings?.timerSeconds ?? DEFAULT_TIMER_SECONDS);
+    els.hintToggle.checked = Boolean(store.settings?.hintEnabled);
   }
 
   function addPlayer(name) {
@@ -233,7 +239,8 @@
       targetQuestions: DEFAULT_TARGET,
       timerEnabled: store.settings?.timerEnabled ?? true,
       timerSeconds: clampTimer(store.settings?.timerSeconds ?? DEFAULT_TIMER_SECONDS),
-      timers: { tick: null, expiry: null },
+      hintEnabled: Boolean(store.settings?.hintEnabled),
+      timers: { tick: null, expiry: null, hint: null },
       currentStart: null,
       currentDone: false,
     };
@@ -262,9 +269,51 @@
 
   function shuffleTail(queue, windowSize) {
     if (queue.length <= 2) return;
-    const tail = queue.splice(-windowSize);
+    const tail = queue.splice(-Math.min(windowSize, queue.length));
     shuffleArray(tail);
     queue.push(...tail);
+  }
+
+  function showHintOptions() {
+    if (!session?.current || session.currentDone) return;
+    const totalMs = (session.timerSeconds || DEFAULT_TIMER_SECONDS) * 1000;
+    if (!session.timerEnabled || totalMs <= HINT_LEAD_MS) return;
+    const correct = session.current.a * session.current.b;
+    const options = buildHintOptions(correct);
+    els.hintOptions.innerHTML = "";
+    options.forEach((opt) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = opt;
+      btn.addEventListener("click", () => {
+        ensureUserInteraction();
+        finalizeAttempt({ submittedAnswer: opt, hintUsed: true });
+      });
+      els.hintOptions.appendChild(btn);
+    });
+    els.hintArea.classList.remove("hidden");
+  }
+
+  function buildHintOptions(correct) {
+    const opts = new Set([correct]);
+    while (opts.size < 3) {
+      const delta = Math.floor(Math.random() * 5) + 1;
+      const sign = Math.random() > 0.5 ? 1 : -1;
+      const candidate = Math.max(0, correct + sign * delta);
+      opts.add(candidate === correct ? candidate + delta + 1 : candidate);
+    }
+    const arr = Array.from(opts);
+    shuffleArray(arr);
+    return arr;
+  }
+
+  function clearHint() {
+    els.hintArea.classList.add("hidden");
+    els.hintOptions.innerHTML = "";
+    if (session?.timers?.hint) {
+      clearTimeout(session.timers.hint);
+      session.timers.hint = null;
+    }
   }
 
   function renderPrompt() {
@@ -310,9 +359,10 @@
     session.queue.splice(spot, 0, clone);
   }
 
-  function finalizeAttempt({ submittedAnswer = null, expired = false }) {
+  function finalizeAttempt({ submittedAnswer = null, expired = false, hintUsed = false }) {
     if (!session?.current || session.currentDone) return;
     clearCountdown();
+    clearHint();
     session.currentDone = true;
     const card = session.current;
     const correctAnswer = card.a * card.b;
@@ -320,15 +370,15 @@
     const result = expired ? "timeout" : isCorrect ? "correct" : "wrong";
     const durationMs = Math.max(0, Date.now() - (session.currentStart || Date.now()));
     session.asked += 1;
-      const attempt = {
-        a: card.a,
-        b: card.b,
-        answer: submittedAnswer,
-        correctAnswer,
-        result,
-        durationMs,
-        hintUsed: false,
-      };
+    const attempt = {
+      a: card.a,
+      b: card.b,
+      answer: submittedAnswer,
+      correctAnswer,
+      result,
+      durationMs,
+      hintUsed: Boolean(hintUsed),
+    };
     session.history.push(attempt);
     if (result === "correct") {
       session.correct += 1;
@@ -445,6 +495,14 @@
     };
     update();
     session.timers.tick = setInterval(update, 200);
+    if (session.hintEnabled) {
+      const hintDelay = Math.max(0, totalMs - HINT_LEAD_MS);
+      if (hintDelay > 0) {
+        session.timers.hint = setTimeout(() => {
+          showHintOptions();
+        }, hintDelay);
+      }
+    }
     session.timers.expiry = setTimeout(() => {
       finalizeAttempt({ submittedAnswer: null, expired: true });
     }, totalMs);
@@ -454,8 +512,10 @@
     if (!session?.timers) return;
     if (session.timers.tick) clearInterval(session.timers.tick);
     if (session.timers.expiry) clearTimeout(session.timers.expiry);
+    if (session.timers.hint) clearTimeout(session.timers.hint);
     session.timers.tick = null;
     session.timers.expiry = null;
+    session.timers.hint = null;
   }
 
   function playSound(kind) {
@@ -586,6 +646,7 @@
 
   function exitToHome() {
     clearCountdown();
+    clearHint();
     session = null;
     els.feedback.textContent = "";
     els.feedback.className = "feedback";
@@ -627,6 +688,12 @@
     els.timerSeconds.value = store.settings.timerSeconds;
     saveStore();
     updateIdleTimerLabel();
+  });
+
+  els.hintToggle.addEventListener("change", () => {
+    store.settings = store.settings || { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
+    store.settings.hintEnabled = Boolean(els.hintToggle.checked);
+    saveStore();
   });
 
   function getSelectedTables() {

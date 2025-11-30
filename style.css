@@ -345,6 +345,37 @@ input[type="range"] {
   color: var(--error);
 }
 
+.hint {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.hint.hidden {
+  display: none;
+}
+
+.hint-title {
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.hint-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 8px;
+}
+
+.hint-options button {
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 0;
+  font-weight: 800;
+}
+
 .progress-row {
   display: flex;
   justify-content: space-between;
