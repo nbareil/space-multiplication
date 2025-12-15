@@ -38,6 +38,8 @@
     summaryCorrect: document.getElementById("summary-correct"),
     summaryWrong: document.getElementById("summary-wrong"),
     summaryAccuracy: document.getElementById("summary-accuracy"),
+    summaryTarget: document.getElementById("summary-target"),
+    summaryDelta: document.getElementById("summary-delta"),
     soundToggle: document.getElementById("sound-toggle"),
     timerToggle: document.getElementById("timer-toggle"),
     timerLabel: document.getElementById("timer-label"),
@@ -301,6 +303,7 @@
       incorrect: 0,
       history: [],
       targetQuestions: DEFAULT_TARGET,
+      targetSuccessRate: TARGET_SUCCESS_RATE,
       timerEnabled: store.settings?.timerEnabled ?? true,
       timerSeconds: clampTimer(store.settings?.timerSeconds ?? DEFAULT_TIMER_SECONDS),
       hintEnabled: Boolean(store.settings?.hintEnabled),
@@ -493,6 +496,8 @@
     if (player && session) {
       clearCountdown();
       updatePlayerStats(player, session.history);
+      const achievedAccuracy = calculateAccuracy(session.correct, session.incorrect);
+      const targetRate = session.targetSuccessRate || TARGET_SUCCESS_RATE;
       const sessionRecord = {
         asked: session.asked,
         correct: session.correct,
@@ -501,6 +506,9 @@
         table: session.table,
         tables: session.tables,
         finishedAt: new Date().toISOString(),
+        targetSuccessRate: targetRate,
+        achievedAccuracy,
+        accuracyDelta: achievedAccuracy - targetRate,
         attempts: session.history.slice(), // shallow copy for persistence
       };
       player.lastSession = sessionRecord;
@@ -584,12 +592,17 @@
   function renderSummary() {
     if (!session) return;
     const { correct, incorrect, targetQuestions } = session;
-    const total = Math.max(1, correct + incorrect);
-    const accuracy = Math.round((correct / total) * 100);
-    els.summaryText.textContent = "Bien joué ! Voici ton résultat.";
+    const achieved = calculateAccuracy(correct, incorrect);
+    const accuracy = Math.round(achieved * 100);
+    const targetRate = session.targetSuccessRate || TARGET_SUCCESS_RATE;
+    const targetPct = Math.round(targetRate * 100);
+    const delta = accuracy - targetPct;
+    els.summaryText.textContent = `Objectif ${targetPct}% · Obtenu ${accuracy}%`;
     els.summaryCorrect.textContent = correct;
     els.summaryWrong.textContent = incorrect;
     els.summaryAccuracy.textContent = `${accuracy}%`;
+    els.summaryTarget.textContent = `${targetPct}%`;
+    els.summaryDelta.textContent = `${delta >= 0 ? "+" : ""}${delta}%`;
     els.progress.textContent = `Question ${session.asked} / ${targetQuestions}`;
   }
 
@@ -907,6 +920,11 @@
 
   function clampWeight(n) {
     return Math.max(MIN_WEIGHT, Math.min(MAX_WEIGHT, Math.round(n)));
+  }
+
+  function calculateAccuracy(correct, incorrect) {
+    const total = Math.max(1, correct + incorrect);
+    return correct / total;
   }
 
   // Initial paint
