@@ -7,6 +7,7 @@
     mode: document.getElementById("panel-mode"),
     play: document.getElementById("panel-play"),
     summary: document.getElementById("panel-summary"),
+    parent: document.getElementById("panel-parent"),
   };
 
   const els = {
