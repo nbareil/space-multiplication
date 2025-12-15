@@ -40,6 +40,7 @@
     summaryAccuracy: document.getElementById("summary-accuracy"),
     summaryTarget: document.getElementById("summary-target"),
     summaryDelta: document.getElementById("summary-delta"),
+    heatmapGrid: document.getElementById("heatmap-grid"),
     soundToggle: document.getElementById("sound-toggle"),
     timerToggle: document.getElementById("timer-toggle"),
     timerLabel: document.getElementById("timer-label"),
@@ -589,6 +590,57 @@
     });
   }
 
+  function renderHeatmap() {
+    const player = getActivePlayer();
+    const container = els.heatmapGrid;
+    if (!container) return;
+    container.innerHTML = "";
+    if (!player) {
+      const msg = document.createElement("div");
+      msg.className = "heat-empty";
+      msg.textContent = "Aucun joueur sélectionné.";
+      container.appendChild(msg);
+      return;
+    }
+    const attemptStats = collectAttemptStats(player);
+    let maxFail = 0;
+    for (let a = 1; a <= 10; a++) {
+      for (let b = 1; b <= 10; b++) {
+        const key = `${a}|${b}`;
+        const fails = attemptStats[key]?.fail || 0;
+        if (fails > maxFail) maxFail = fails;
+      }
+    }
+    if (maxFail === 0) {
+      const msg = document.createElement("div");
+      msg.className = "heat-empty";
+      msg.textContent = "Aucune erreur enregistrée pour le moment.";
+      container.appendChild(msg);
+      return;
+    }
+    for (let a = 1; a <= 10; a++) {
+      for (let b = 1; b <= 10; b++) {
+        const key = `${a}|${b}`;
+        const fails = attemptStats[key]?.fail || 0;
+        const ratio = maxFail > 0 ? fails / maxFail : 0;
+        const cell = document.createElement("div");
+        cell.className = "heat-cell";
+        const bg = buildHeatColor(ratio);
+        cell.style.background = bg.bg;
+        cell.style.borderColor = bg.border;
+        const label = document.createElement("div");
+        label.className = "heat-label";
+        label.textContent = `${a}×${b}`;
+        const count = document.createElement("div");
+        count.className = "heat-count";
+        count.textContent = `${fails} ✗`;
+        cell.appendChild(label);
+        cell.appendChild(count);
+        container.appendChild(cell);
+      }
+    }
+  }
+
   function renderSummary() {
     if (!session) return;
     const { correct, incorrect, targetQuestions } = session;
@@ -805,6 +857,7 @@
   parentButton.className = "btn ghost small";
   parentButton.addEventListener("click", () => {
     renderOpsGrid();
+    renderHeatmap();
     showPanel("parent");
   });
   document.querySelector(".status")?.appendChild(parentButton);
@@ -925,6 +978,16 @@
   function calculateAccuracy(correct, incorrect) {
     const total = Math.max(1, correct + incorrect);
     return correct / total;
+  }
+
+  function buildHeatColor(ratio) {
+    const clamped = Math.max(0, Math.min(1, ratio));
+    const alpha = 0.18 + 0.6 * clamped;
+    const borderAlpha = 0.3 + 0.5 * clamped;
+    return {
+      bg: `rgba(255, 99, 71, ${alpha.toFixed(3)})`,
+      border: `rgba(255, 99, 71, ${borderAlpha.toFixed(3)})`,
+    };
   }
 
   // Initial paint
