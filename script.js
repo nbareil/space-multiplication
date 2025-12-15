@@ -54,6 +54,7 @@
   const MIN_WEIGHT = 1;
   const MAX_WEIGHT = 6;
   const HINT_LEAD_MS = 5000;
+  const TARGET_SUCCESS_RATE = 0.8;
 
   let store = loadStore();
   let session = null;
@@ -188,30 +189,43 @@
           facts.push([a, b]);
         }
       }
-      shuffleArray(facts);
-      facts.splice(20); // session courte
     } else {
       tables.forEach((t) => {
         for (let a = 1; a <= 10; a++) {
           facts.push([a, t]);
         }
       });
-      shuffleArray(facts);
-      if (facts.length > 25) facts.splice(25);
     }
-    return facts.map(([a, b]) => {
+    const deckSize = allTables ? 20 : Math.min(25, facts.length);
+    const attemptStats = collectAttemptStats(player);
+    const scored = facts.map(([a, b]) => {
       const key = `${a}|${b}`;
-      const stats = player?.factStreaks?.[key] || { streak: 0, misses: 0 };
-      const base = clampWeight(5 - stats.streak + (stats.misses > 0 ? 1 : 0));
+      const streakStats = player?.factStreaks?.[key] || { streak: 0, misses: 0 };
+      const predicted = estimateSuccessProbability(key, attemptStats);
+      const selectionWeight = computeSelectionWeight(predicted);
+      const baseWeight = clampWeight(5 - streakStats.streak + (streakStats.misses > 0 ? 1 : 0));
+      let dueWeight = baseWeight;
+      if (predicted < TARGET_SUCCESS_RATE - 0.15) {
+        dueWeight += 2;
+      } else if (predicted < TARGET_SUCCESS_RATE) {
+        dueWeight += 1;
+      } else if (predicted > TARGET_SUCCESS_RATE + 0.15) {
+        dueWeight -= 1;
+      }
+      dueWeight = clampWeight(dueWeight);
       return {
         a,
         b,
-        streak: stats.streak || 0,
-        dueWeight: base,
+        streak: streakStats.streak || 0,
+        dueWeight,
         seen: 0,
-        lastResult: stats.misses > 0 ? "wrong" : undefined,
+        lastResult: streakStats.misses > 0 ? "wrong" : undefined,
+        selectionWeight,
       };
     });
+    const chosen = weightedSample(scored, deckSize);
+    shuffleArray(chosen);
+    return chosen;
   }
 
   function shuffleArray(arr) {
@@ -219,6 +233,54 @@
       const j = Math.floor(Math.random() * (i + 1));
       [arr[i], arr[j]] = [arr[j], arr[i]];
     }
+  }
+
+  function collectAttemptStats(player) {
+    const stats = {};
+    if (!player) return stats;
+    (player.sessions || []).forEach((session) => {
+      (session.attempts || []).forEach((att) => {
+        const key = `${att.a}|${att.b}`;
+        const entry = stats[key] || { success: 0, fail: 0 };
+        if (att.result === "correct") {
+          entry.success += 1;
+        } else {
+          entry.fail += 1;
+        }
+        stats[key] = entry;
+      });
+    });
+    return stats;
+  }
+
+  function estimateSuccessProbability(key, attemptStats) {
+    const stats = attemptStats[key] || { success: 0, fail: 0 };
+    const total = stats.success + stats.fail;
+    return (stats.success + 1) / (total + 2); // Laplace smoothing to avoid 0/1 extremes
+  }
+
+  function computeSelectionWeight(predictedSuccess) {
+    const delta = TARGET_SUCCESS_RATE - predictedSuccess;
+    const weight = 1 + delta * 3; // favor facts below target, mildly downweight easy ones
+    return Math.max(0.2, weight);
+  }
+
+  function weightedSample(items, count) {
+    const pool = items.slice();
+    const chosen = [];
+    while (chosen.length < count && pool.length > 0) {
+      const total = pool.reduce((sum, item) => sum + item.selectionWeight, 0);
+      if (total <= 0) break;
+      let roll = Math.random() * total;
+      let idx = 0;
+      for (; idx < pool.length; idx++) {
+        roll -= pool[idx].selectionWeight;
+        if (roll <= 0) break;
+      }
+      const pick = pool.splice(idx, 1)[0];
+      chosen.push(pick);
+    }
+    return chosen.length > 0 ? chosen : items.slice(0, count);
   }
 
   function startSession(params) {
@@ -368,8 +430,8 @@
     session.currentDone = true;
     const card = session.current;
     const correctAnswer = card.a * card.b;
-    const isCorrect = !expired && submittedAnswer === correctAnswer;
-    const result = expired ? "timeout" : isCorrect ? "correct" : "wrong";
+    const isCorrect = submittedAnswer === correctAnswer;
+    const result = expired ? (isCorrect ? "correct" : "timeout") : isCorrect ? "correct" : "wrong";
     const durationMs = Math.max(0, Date.now() - (session.currentStart || Date.now()));
     session.asked += 1;
     const attempt = {
@@ -380,11 +442,12 @@
       result,
       durationMs,
       hintUsed: Boolean(hintUsed),
+      expired: Boolean(expired),
     };
     session.history.push(attempt);
     if (result === "correct") {
       session.correct += 1;
-      els.feedback.textContent = "Bravo !";
+      els.feedback.textContent = expired ? "Bravo, juste à temps !" : "Bravo !";
       els.feedback.className = "feedback ok";
       playSound("ok");
       card.streak += 1;
@@ -477,18 +540,14 @@
       els.opsGrid.appendChild(msg);
       return;
     }
+    const attemptStats = collectAttemptStats(player);
     const cards = [];
     for (let a = 1; a <= 10; a++) {
       for (let b = 1; b <= 10; b++) {
         const key = `${a}|${b}`;
         const stats = player.factStreaks?.[key] || { streak: 0, misses: 0 };
-        const attempts = (player.sessions || []).reduce((acc, sess) => {
-          const match = (sess.attempts || []).filter((att) => att.a === a && att.b === b);
-          return acc.concat(match);
-        }, []);
-        const success = attempts.filter((att) => att.result === "correct").length;
-        const fail = attempts.filter((att) => att.result !== "correct").length;
-        cards.push({ a, b, success, fail, streak: stats.streak || 0 });
+        const attempts = attemptStats[key] || { success: 0, fail: 0 };
+        cards.push({ a, b, success: attempts.success, fail: attempts.fail, streak: stats.streak || 0 });
       }
     }
     cards.forEach((card) => {
@@ -560,7 +619,9 @@
       }
     }
     session.timers.expiry = setTimeout(() => {
-      finalizeAttempt({ submittedAnswer: null, expired: true });
+      const pending = els.answerInput.value.trim();
+      const parsed = pending === "" ? null : Number(pending);
+      finalizeAttempt({ submittedAnswer: Number.isFinite(parsed) ? parsed : null, expired: true });
     }, totalMs);
   }
 
@@ -624,6 +685,24 @@
   function ensureUserInteraction() {
     if (userInteracted) return;
     userInteracted = true;
+  }
+
+  function isCoarsePointerDevice() {
+    return window.matchMedia && window.matchMedia("(pointer:coarse)").matches;
+  }
+
+  function configureAnswerInputForDevice() {
+    if (!els.answerInput) return;
+    const isMobile = isCoarsePointerDevice();
+    if (isMobile) {
+      els.answerInput.type = "text";
+      els.answerInput.setAttribute("inputmode", "none");
+      els.answerInput.setAttribute("readonly", "readonly");
+    } else {
+      els.answerInput.type = "number";
+      els.answerInput.setAttribute("inputmode", "numeric");
+      els.answerInput.removeAttribute("readonly");
+    }
   }
 
   // UI events
@@ -813,6 +892,12 @@
   });
 
   document.addEventListener("pointerdown", ensureUserInteraction, { once: true });
+  const pointerMedia = window.matchMedia ? window.matchMedia("(pointer:coarse)") : null;
+  if (pointerMedia?.addEventListener) {
+    pointerMedia.addEventListener("change", configureAnswerInputForDevice);
+  } else if (pointerMedia?.addListener) {
+    pointerMedia.addListener(configureAnswerInputForDevice);
+  }
 
   function focusAnswer() {
     setTimeout(() => {
@@ -832,4 +917,5 @@
     setActivePlayer(store.players[0].id);
   }
   updateIdleTimerLabel();
+  configureAnswerInputForDevice();
 })();

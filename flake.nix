@@ -34,7 +34,7 @@
             export PNPM_HOME=''${PNPM_HOME:-$HOME/.pnpm}
             export PATH=$PNPM_HOME:$PATH
             export NODE_ENV=development
-            echo "Loaded Tabular Analysis Workbench dev shell"
+            echo "Loaded dev shell"
           '';
         };
       });
