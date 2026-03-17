@@ -822,7 +822,7 @@
 
   function buildSpokenPrompt(card) {
     if (!card) return "";
-    return `${numberToFrenchWords(card.a)} multiplie par ${numberToFrenchWords(card.b)}`;
+    return `${numberToFrenchWords(card.a)} fois ${numberToFrenchWords(card.b)}`;
   }
 
   function numberToFrenchWords(value) {
