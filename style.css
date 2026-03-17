@@ -309,6 +309,36 @@ input[type="range"] {
   gap: 10px;
 }
 
+.voice-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.voice-controls.hidden {
+  display: none;
+}
+
+.voice-status {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.voice-status.hidden {
+  display: none;
+}
+
+.voice-status.ok {
+  color: var(--success);
+}
+
+.voice-status.nope {
+  color: var(--error);
+}
+
 .keypad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

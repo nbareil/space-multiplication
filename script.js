@@ -47,9 +47,15 @@
     timerLabel: document.getElementById("timer-label"),
     timerSeconds: document.getElementById("timer-seconds"),
     hintToggle: document.getElementById("hint-toggle"),
+    ttsToggle: document.getElementById("tts-toggle"),
+    voiceInputToggle: document.getElementById("voice-input-toggle"),
     hintArea: document.getElementById("hint-area"),
     hintOptions: document.getElementById("hint-options"),
     opsGrid: document.getElementById("ops-grid"),
+    voiceControls: document.getElementById("voice-controls"),
+    speakPrompt: document.getElementById("btn-speak-prompt"),
+    voiceAnswer: document.getElementById("btn-voice-answer"),
+    voiceStatus: document.getElementById("voice-status"),
   };
 
   const STORAGE_KEY = "space-times-store";
@@ -66,6 +72,41 @@
   let userInteracted = false;
   let audioCtx = null;
   let audioInitFailed = false;
+  let voiceState = {
+    ttsSupported: null,
+    recognitionSupported: null,
+    recognitionCtor: null,
+    recognition: null,
+    isListening: false,
+    ttsAvailable: true,
+    recognitionAvailable: true,
+  };
+
+  function buildDefaultStore() {
+    return {
+      players: [],
+      activePlayerId: null,
+      settings: {
+        timerEnabled: true,
+        timerSeconds: DEFAULT_TIMER_SECONDS,
+        hintEnabled: false,
+      },
+    };
+  }
+
+  function applyPlayerSettingDefaults(player) {
+    player.sessions ||= [];
+    player.settings ||= {};
+    if (typeof player.settings.soundOn !== "boolean") {
+      player.settings.soundOn = true;
+    }
+    if (typeof player.settings.ttsEnabled !== "boolean") {
+      player.settings.ttsEnabled = false;
+    }
+    if (typeof player.settings.voiceInputEnabled !== "boolean") {
+      player.settings.voiceInputEnabled = false;
+    }
+  }
 
   function clampTimer(value) {
     const n = Number(value);
@@ -79,28 +120,18 @@
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
-        return {
-          players: [],
-          activePlayerId: null,
-          settings: { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS, hintEnabled: false },
-        };
+        return buildDefaultStore();
       }
       const parsed = JSON.parse(raw);
       parsed.players ||= [];
-      parsed.players.forEach((p) => {
-        p.sessions ||= [];
-      });
-      parsed.settings ||= { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS, hintEnabled: false };
+      parsed.players.forEach(applyPlayerSettingDefaults);
+      parsed.settings ||= buildDefaultStore().settings;
       parsed.settings.timerSeconds = clampTimer(parsed.settings.timerSeconds);
       parsed.settings.hintEnabled = Boolean(parsed.settings.hintEnabled);
       return parsed;
     } catch (e) {
       console.warn("Impossible de lire le stockage, réinitialisation.", e);
-      return {
-        players: [],
-        activePlayerId: null,
-        settings: { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS, hintEnabled: false },
-      };
+      return buildDefaultStore();
     }
   }
 
@@ -111,6 +142,10 @@
   function showPanel(name) {
     if (name === "player") {
       updatePlayerSelect();
+    }
+    if (name !== "play") {
+      stopSpeaking();
+      stopVoiceRecognition();
     }
     Object.entries(panels).forEach(([key, el]) => {
       el.classList.toggle("active", key === name);
@@ -146,7 +181,11 @@
   }
 
   function getActivePlayer() {
-    return store.players.find((p) => p.id === store.activePlayerId) || null;
+    const player = store.players.find((p) => p.id === store.activePlayerId) || null;
+    if (player) {
+      applyPlayerSettingDefaults(player);
+    }
+    return player;
   }
 
   function setActivePlayer(playerId) {
@@ -158,9 +197,14 @@
       els.activePlayerChip.classList.remove("muted");
       const soundOn = player.settings?.soundOn ?? true;
       els.soundToggle.checked = soundOn;
+      els.ttsToggle.checked = Boolean(player.settings?.ttsEnabled);
+      els.voiceInputToggle.checked = Boolean(player.settings?.voiceInputEnabled);
     } else {
       els.activePlayerChip.textContent = "Joueur : aucun";
       els.activePlayerChip.classList.add("muted");
+      els.soundToggle.checked = true;
+      els.ttsToggle.checked = false;
+      els.voiceInputToggle.checked = false;
     }
     const timerOn = store.settings?.timerEnabled ?? true;
     els.timerToggle.checked = timerOn;
@@ -175,7 +219,7 @@
       name: name.trim(),
       factStreaks: {},
       lastSession: null,
-      settings: { soundOn: true },
+      settings: { soundOn: true, ttsEnabled: false, voiceInputEnabled: false },
     };
     store.players.push(newPlayer);
     setActivePlayer(id);
@@ -293,6 +337,7 @@
       alert("Choisis ou crée un joueur avant de commencer.");
       return;
     }
+    applyPlayerSettingDefaults(player);
     const deck = buildDeck(params.tables, null, player);
     shuffleArray(deck);
     session = {
@@ -309,13 +354,22 @@
       timerEnabled: store.settings?.timerEnabled ?? true,
       timerSeconds: clampTimer(store.settings?.timerSeconds ?? DEFAULT_TIMER_SECONDS),
       hintEnabled: Boolean(store.settings?.hintEnabled),
+      ttsEnabled: Boolean(player.settings?.ttsEnabled),
+      voiceInputEnabled: Boolean(player.settings?.voiceInputEnabled),
       timers: { tick: null, expiry: null, hint: null },
       currentStart: null,
       currentDone: false,
+      voice: {
+        ttsAvailable: true,
+        recognitionAvailable: true,
+      },
     };
     lastSessionParams = { ...params };
     els.feedback.textContent = "";
     els.feedback.className = "feedback";
+    ensureVoiceCapabilities();
+    resetVoiceSessionState();
+    applyInitialVoiceAvailability();
     nextCard();
     showPanel("play");
     renderSessionMeta();
@@ -323,6 +377,8 @@
 
   function nextCard() {
     if (!session) return;
+    stopSpeaking();
+    stopVoiceRecognition();
     if (session.asked >= session.targetQuestions || session.queue.length === 0) {
       endSession();
       return;
@@ -334,6 +390,8 @@
     session.current.seen += 1;
     startCountdown();
     renderPrompt();
+    syncVoiceControls();
+    speakCurrentPrompt();
   }
 
   function shuffleTail(queue, windowSize) {
@@ -390,6 +448,11 @@
     const { a, b } = session.current;
     els.prompt.textContent = `${a} × ${b} = ?`;
     els.answerInput.value = "";
+    const keepVoiceStatus = (session.ttsEnabled && !session.voice?.ttsAvailable) ||
+      (session.voiceInputEnabled && !session.voice?.recognitionAvailable);
+    if (!keepVoiceStatus) {
+      setVoiceStatus("");
+    }
     focusAnswer();
   }
 
@@ -401,6 +464,7 @@
   function handleSubmit() {
     if (!session?.current) return;
     if (session.currentDone) return;
+    stopVoiceRecognition();
     const raw = els.answerInput.value.trim();
     if (raw === "") {
       els.feedback.textContent = "Entre une réponse pour valider.";
@@ -432,6 +496,8 @@
     if (!session?.current || session.currentDone) return;
     clearCountdown();
     clearHint();
+    stopSpeaking();
+    stopVoiceRecognition();
     session.currentDone = true;
     const card = session.current;
     const correctAnswer = card.a * card.b;
@@ -497,6 +563,8 @@
     const player = getActivePlayer();
     if (player && session) {
       clearCountdown();
+      stopSpeaking();
+      stopVoiceRecognition();
       updatePlayerStats(player, session.history);
       const achievedAccuracy = calculateAccuracy(session.correct, session.incorrect);
       const targetRate = session.targetSuccessRate || TARGET_SUCCESS_RATE;
@@ -701,6 +769,379 @@
     session.timers.hint = null;
   }
 
+  function ensureVoiceCapabilities() {
+    if (voiceState.ttsSupported === null) {
+      voiceState.ttsSupported = typeof window.speechSynthesis !== "undefined" &&
+        typeof window.SpeechSynthesisUtterance !== "undefined";
+    }
+    if (voiceState.recognitionSupported === null) {
+      const ctor = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+      voiceState.recognitionCtor = ctor;
+      voiceState.recognitionSupported = Boolean(ctor);
+    }
+  }
+
+  function resetVoiceSessionState() {
+    if (!session) return;
+    session.voice = {
+      ttsAvailable: true,
+      recognitionAvailable: true,
+    };
+    voiceState.ttsAvailable = true;
+    voiceState.recognitionAvailable = true;
+    setVoiceStatus("");
+  }
+
+  function applyInitialVoiceAvailability() {
+    if (!session) return;
+    const ttsMissing = session.ttsEnabled && !voiceState.ttsSupported;
+    const recognitionMissing = session.voiceInputEnabled && !voiceState.recognitionSupported;
+    if (!ttsMissing && !recognitionMissing) return;
+    if (ttsMissing) {
+      session.voice.ttsAvailable = false;
+      voiceState.ttsAvailable = false;
+    }
+    if (recognitionMissing) {
+      session.voice.recognitionAvailable = false;
+      voiceState.recognitionAvailable = false;
+    }
+    if (ttsMissing && recognitionMissing) {
+      setVoiceStatus("Fonctions vocales indisponibles.", "nope");
+      return;
+    }
+    if (ttsMissing) {
+      setVoiceStatus("Lecture vocale indisponible.", "nope");
+      return;
+    }
+    setVoiceStatus("Réponse vocale indisponible.", "nope");
+  }
+
+  function buildSpokenPrompt(card) {
+    if (!card) return "";
+    return `${card.a} fois ${card.b}`;
+  }
+
+  function setVoiceStatus(message, kind = "") {
+    if (!els.voiceStatus) return;
+    els.voiceStatus.textContent = message;
+    els.voiceStatus.className = "voice-status";
+    if (!message) {
+      els.voiceStatus.classList.add("hidden");
+      return;
+    }
+    if (kind) {
+      els.voiceStatus.classList.add(kind);
+    }
+  }
+
+  function syncVoiceControls() {
+    if (!els.voiceControls || !session) return;
+    ensureVoiceCapabilities();
+    const hasStatus = Boolean(els.voiceStatus?.textContent);
+    const ttsVisible = session.ttsEnabled && voiceState.ttsSupported && session.voice.ttsAvailable;
+    const recognitionVisible = session.voiceInputEnabled &&
+      voiceState.recognitionSupported &&
+      session.voice.recognitionAvailable;
+    const showControls = ttsVisible || recognitionVisible || hasStatus;
+    els.voiceControls.classList.toggle("hidden", !showControls);
+    els.speakPrompt.classList.toggle("hidden", !ttsVisible);
+    els.voiceAnswer.classList.toggle("hidden", !recognitionVisible);
+    if (recognitionVisible) {
+      els.voiceAnswer.textContent = voiceState.isListening ? "Stop" : "Parler";
+    }
+  }
+
+  function markTtsUnavailable(message) {
+    if (!session?.voice) return;
+    session.voice.ttsAvailable = false;
+    voiceState.ttsAvailable = false;
+    stopSpeaking();
+    if (message) {
+      setVoiceStatus(message, "nope");
+    }
+    syncVoiceControls();
+  }
+
+  function markRecognitionUnavailable(message) {
+    if (!session?.voice) return;
+    session.voice.recognitionAvailable = false;
+    voiceState.recognitionAvailable = false;
+    stopVoiceRecognition();
+    if (message) {
+      setVoiceStatus(message, "nope");
+    }
+    syncVoiceControls();
+  }
+
+  function speakText(text) {
+    ensureVoiceCapabilities();
+    if (!session?.ttsEnabled || !text) return;
+    if (!voiceState.ttsSupported || !session.voice?.ttsAvailable) {
+      return;
+    }
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new window.SpeechSynthesisUtterance(text);
+      utterance.lang = "fr-FR";
+      utterance.rate = 0.9;
+      utterance.onerror = () => {
+        markTtsUnavailable("Lecture vocale indisponible.");
+      };
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn("Speech synthesis unavailable.", e);
+      markTtsUnavailable("Lecture vocale indisponible.");
+    }
+  }
+
+  function speakCurrentPrompt() {
+    if (!session?.current || !session.ttsEnabled) return;
+    speakText(buildSpokenPrompt(session.current));
+  }
+
+  function stopSpeaking() {
+    if (typeof window.speechSynthesis === "undefined") return;
+    try {
+      window.speechSynthesis.cancel();
+    } catch (e) {
+      console.warn("Unable to cancel speech synthesis.", e);
+    }
+  }
+
+  function parseTranscriptAsNumber(transcript) {
+    if (!transcript) return null;
+    const normalized = transcript
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9 -]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized) return null;
+    const digitMatch = normalized.match(/\d+/);
+    if (digitMatch) {
+      return Number(digitMatch[0]);
+    }
+    const directMap = {
+      zero: 0,
+      un: 1,
+      une: 1,
+      deux: 2,
+      trois: 3,
+      quatre: 4,
+      cinq: 5,
+      six: 6,
+      sept: 7,
+      huit: 8,
+      neuf: 9,
+      dix: 10,
+      onze: 11,
+      douze: 12,
+      treize: 13,
+      quatorze: 14,
+      quinze: 15,
+      seize: 16,
+      "dix sept": 17,
+      "dix huit": 18,
+      "dix neuf": 19,
+      vingt: 20,
+      trente: 30,
+      quarante: 40,
+      cinquante: 50,
+      soixante: 60,
+      "soixante dix": 70,
+      "soixante et onze": 71,
+      "quatre vingt": 80,
+      "quatre vingt dix": 90,
+      cent: 100,
+    };
+    if (Object.prototype.hasOwnProperty.call(directMap, normalized)) {
+      return directMap[normalized];
+    }
+    const tokens = normalized
+      .replace(/-/g, " ")
+      .split(" ")
+      .filter((token) => token && token !== "et");
+    if (!tokens.length) return null;
+    const unitMap = {
+      zero: 0,
+      un: 1,
+      une: 1,
+      deux: 2,
+      trois: 3,
+      quatre: 4,
+      cinq: 5,
+      six: 6,
+      sept: 7,
+      huit: 8,
+      neuf: 9,
+    };
+    const teenMap = {
+      dix: 10,
+      onze: 11,
+      douze: 12,
+      treize: 13,
+      quatorze: 14,
+      quinze: 15,
+      seize: 16,
+    };
+    const tensMap = {
+      vingt: 20,
+      trente: 30,
+      quarante: 40,
+      cinquante: 50,
+      soixante: 60,
+    };
+    let total = 0;
+    for (let i = 0; i < tokens.length; i += 1) {
+      const token = tokens[i];
+      if (Object.prototype.hasOwnProperty.call(teenMap, token)) {
+        total += teenMap[token];
+        continue;
+      }
+      if (Object.prototype.hasOwnProperty.call(tensMap, token)) {
+        total += tensMap[token];
+        continue;
+      }
+      if (token === "dix" && Object.prototype.hasOwnProperty.call(unitMap, tokens[i + 1])) {
+        total += 10 + unitMap[tokens[i + 1]];
+        i += 1;
+        continue;
+      }
+      if (token === "soixante" && token === tokens[i]) {
+        const next = tokens[i + 1];
+        if (next === "dix") {
+          const unit = unitMap[tokens[i + 2]] || 0;
+          total += 70 + unit;
+          i += unit ? 2 : 1;
+          continue;
+        }
+        if (Object.prototype.hasOwnProperty.call(teenMap, next)) {
+          total += 60 + teenMap[next];
+          i += 1;
+          continue;
+        }
+      }
+      if (token === "quatre" && tokens[i + 1] === "vingt") {
+        const next = tokens[i + 2];
+        if (!next) {
+          total += 80;
+          i += 1;
+          continue;
+        }
+        if (next === "dix") {
+          const unit = unitMap[tokens[i + 3]] || 0;
+          total += 90 + unit;
+          i += unit ? 3 : 2;
+          continue;
+        }
+        if (Object.prototype.hasOwnProperty.call(teenMap, next)) {
+          total += 80 + teenMap[next];
+          i += 2;
+          continue;
+        }
+        if (Object.prototype.hasOwnProperty.call(unitMap, next)) {
+          total += 80 + unitMap[next];
+          i += 2;
+          continue;
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(unitMap, token)) {
+        total += unitMap[token];
+        continue;
+      }
+      return null;
+    }
+    return Number.isFinite(total) ? total : null;
+  }
+
+  function handleRecognizedTranscript(transcript) {
+    const parsed = parseTranscriptAsNumber(transcript);
+    if (!Number.isFinite(parsed)) {
+      setVoiceStatus("Réponse non comprise.", "nope");
+      return;
+    }
+    setVoiceStatus(`Réponse entendue : ${parsed}`, "ok");
+    els.answerInput.value = String(parsed);
+    finalizeAttempt({ submittedAnswer: parsed });
+  }
+
+  function startVoiceRecognition() {
+    if (!session?.voiceInputEnabled || session.currentDone) return;
+    ensureUserInteraction();
+    ensureVoiceCapabilities();
+    if (!voiceState.recognitionSupported || !voiceState.recognitionCtor) {
+      markRecognitionUnavailable("Réponse vocale indisponible.");
+      return;
+    }
+    if (!session.voice?.recognitionAvailable) return;
+    stopSpeaking();
+    stopVoiceRecognition();
+    try {
+      const recognition = new voiceState.recognitionCtor();
+      voiceState.recognition = recognition;
+      voiceState.isListening = true;
+      recognition.lang = "fr-FR";
+      recognition.maxAlternatives = 1;
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.onstart = () => {
+        voiceState.isListening = true;
+        setVoiceStatus("J'écoute...", "ok");
+        syncVoiceControls();
+      };
+      recognition.onresult = (event) => {
+        const transcript = event?.results?.[0]?.[0]?.transcript || "";
+        voiceState.isListening = false;
+        syncVoiceControls();
+        handleRecognizedTranscript(transcript);
+      };
+      recognition.onerror = (event) => {
+        voiceState.isListening = false;
+        const code = event?.error || "unknown";
+        if (code === "not-allowed" || code === "service-not-allowed") {
+          markRecognitionUnavailable("Micro refusé, réponse vocale masquée.");
+          return;
+        }
+        if (code === "audio-capture") {
+          markRecognitionUnavailable("Micro indisponible.");
+          return;
+        }
+        setVoiceStatus("Écoute impossible, réessaie.", "nope");
+        syncVoiceControls();
+      };
+      recognition.onend = () => {
+        voiceState.isListening = false;
+        voiceState.recognition = null;
+        syncVoiceControls();
+      };
+      recognition.start();
+    } catch (e) {
+      console.warn("Speech recognition unavailable.", e);
+      markRecognitionUnavailable("Réponse vocale indisponible.");
+    }
+  }
+
+  function stopVoiceRecognition() {
+    if (!voiceState.recognition) {
+      voiceState.isListening = false;
+      return;
+    }
+    const active = voiceState.recognition;
+    voiceState.recognition = null;
+    voiceState.isListening = false;
+    try {
+      active.onresult = null;
+      active.onerror = null;
+      active.onend = null;
+      active.onstart = null;
+      active.stop();
+    } catch (e) {
+      console.warn("Unable to stop voice recognition.", e);
+    }
+    syncVoiceControls();
+  }
+
   function playSound(kind) {
     if (!userInteracted || audioInitFailed) return;
     const player = getActivePlayer();
@@ -866,10 +1307,13 @@
   function exitToHome() {
     clearCountdown();
     clearHint();
+    stopSpeaking();
+    stopVoiceRecognition();
     session = null;
     els.feedback.textContent = "";
     els.feedback.className = "feedback";
     els.answerInput.value = "";
+    setVoiceStatus("");
     updateIdleTimerLabel();
     showPanel("landing");
   }
@@ -879,6 +1323,8 @@
   });
 
   els.replay.addEventListener("click", () => {
+    stopSpeaking();
+    stopVoiceRecognition();
     if (lastSessionParams) {
       startSession(lastSessionParams);
     } else {
@@ -891,6 +1337,22 @@
     if (!player) return;
     player.settings = player.settings || {};
     player.settings.soundOn = els.soundToggle.checked;
+    saveStore();
+  });
+
+  els.ttsToggle.addEventListener("change", () => {
+    const player = getActivePlayer();
+    if (!player) return;
+    player.settings = player.settings || {};
+    player.settings.ttsEnabled = Boolean(els.ttsToggle.checked);
+    saveStore();
+  });
+
+  els.voiceInputToggle.addEventListener("change", () => {
+    const player = getActivePlayer();
+    if (!player) return;
+    player.settings = player.settings || {};
+    player.settings.voiceInputEnabled = Boolean(els.voiceInputToggle.checked);
     saveStore();
   });
 
@@ -913,6 +1375,20 @@
     store.settings = store.settings || { timerEnabled: true, timerSeconds: DEFAULT_TIMER_SECONDS };
     store.settings.hintEnabled = Boolean(els.hintToggle.checked);
     saveStore();
+  });
+
+  els.speakPrompt.addEventListener("click", () => {
+    ensureUserInteraction();
+    speakCurrentPrompt();
+  });
+
+  els.voiceAnswer.addEventListener("click", () => {
+    if (voiceState.isListening) {
+      stopVoiceRecognition();
+      setVoiceStatus("");
+      return;
+    }
+    startVoiceRecognition();
   });
 
   function getSelectedTables() {

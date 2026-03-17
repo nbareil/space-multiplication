@@ -1,6 +1,6 @@
 # Space Times
 
-Kid-friendly multiplication trainer (tables 1–10) built with plain HTML/CSS/JS. French-first UX, responsive, offline-only (no backend), spaced repetition for missed facts, optional per-question timer, keypad/keyboard input, and per-player local persistence (streaks, sessions, settings).
+Kid-friendly multiplication trainer (tables 1–10) built with plain HTML/CSS/JS. French-first UX, responsive, offline-only (no backend), spaced repetition for missed facts, optional per-question timer, keypad/keyboard input, optional browser-based text-to-speech and voice answers, and per-player local persistence (streaks, sessions, settings).
 
 ## GitHub Pages Deployment
 
@@ -11,3 +11,10 @@ Kid-friendly multiplication trainer (tables 1–10) built with plain HTML/CSS/JS
 ## Local Development
 
 Just open `index.html` in a modern browser—no build or backend required.
+
+## Speech Features
+
+- Text-to-speech uses the browser Web Speech synthesis API when available.
+- Voice answers use browser speech recognition support (`SpeechRecognition` / `webkitSpeechRecognition`) when available.
+- Both features are disabled by default and stored per player.
+- Browser support varies by device and browser; unsupported features are hidden automatically.

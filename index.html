@@ -97,6 +97,14 @@
             <input type="checkbox" id="hint-toggle">
             Proposer un indice 5s avant la fin (3 choix)
           </label>
+          <label class="inline">
+            <input type="checkbox" id="tts-toggle">
+            Lire l'opération à voix haute
+          </label>
+          <label class="inline">
+            <input type="checkbox" id="voice-input-toggle">
+            Répondre à la voix
+          </label>
         </div>
         <div class="actions">
           <button id="btn-begin-session" class="btn primary">Lancer la session</button>
@@ -114,6 +122,11 @@
         <div class="input-row">
           <input id="answer-input" type="number" inputmode="numeric" autocomplete="off" min="0" placeholder="Réponse">
           <button id="btn-submit" class="btn primary">Valider</button>
+        </div>
+        <div id="voice-controls" class="voice-controls hidden">
+          <button id="btn-speak-prompt" type="button" class="btn ghost small hidden">Lire</button>
+          <button id="btn-voice-answer" type="button" class="btn secondary small hidden">Parler</button>
+          <span id="voice-status" class="voice-status hidden"></span>
         </div>
         <div class="keypad" id="keypad">
           <button data-key="7">7</button>
