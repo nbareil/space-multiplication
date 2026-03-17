@@ -78,6 +78,8 @@
     recognitionCtor: null,
     recognition: null,
     isListening: false,
+    shouldAutoListen: false,
+    autoListenTimer: null,
     ttsAvailable: true,
     recognitionAvailable: true,
   };
@@ -391,7 +393,7 @@
     startCountdown();
     renderPrompt();
     syncVoiceControls();
-    speakCurrentPrompt();
+    playPromptVoiceLoop();
   }
 
   function shuffleTail(queue, windowSize) {
@@ -549,6 +551,7 @@
       session.currentDone = false;
       session.currentStart = Date.now();
       startCountdown();
+      scheduleAutoListening(250);
     } else {
       // Timeout : rester sur la question sans relancer le chrono
       els.answerInput.value = "";
@@ -556,6 +559,7 @@
       session.currentDone = false;
       els.timerLabel.textContent = "Temps : expiré";
       els.timerLabel.classList.add("muted");
+      scheduleAutoListening(250);
     }
   }
 
@@ -818,7 +822,68 @@
 
   function buildSpokenPrompt(card) {
     if (!card) return "";
-    return `${card.a} fois ${card.b}`;
+    return `${numberToFrenchWords(card.a)} multiplie par ${numberToFrenchWords(card.b)}`;
+  }
+
+  function numberToFrenchWords(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return String(value);
+    }
+    const directMap = {
+      0: "zero",
+      1: "un",
+      2: "deux",
+      3: "trois",
+      4: "quatre",
+      5: "cinq",
+      6: "six",
+      7: "sept",
+      8: "huit",
+      9: "neuf",
+      10: "dix",
+      11: "onze",
+      12: "douze",
+      13: "treize",
+      14: "quatorze",
+      15: "quinze",
+      16: "seize",
+      17: "dix-sept",
+      18: "dix-huit",
+      19: "dix-neuf",
+      20: "vingt",
+      30: "trente",
+      40: "quarante",
+      50: "cinquante",
+      60: "soixante",
+      70: "soixante-dix",
+      71: "soixante-et-onze",
+      80: "quatre-vingts",
+      90: "quatre-vingt-dix",
+      100: "cent",
+    };
+    if (Object.prototype.hasOwnProperty.call(directMap, number)) {
+      return directMap[number];
+    }
+    if (number < 0 || number > 100) {
+      return String(number);
+    }
+    if (number < 70) {
+      const tens = Math.floor(number / 10) * 10;
+      const unit = number % 10;
+      if (unit === 1 && tens !== 80) {
+        return `${directMap[tens]}-et-un`;
+      }
+      return `${directMap[tens]}-${directMap[unit]}`;
+    }
+    if (number < 80) {
+      return `soixante-${numberToFrenchWords(number - 60)}`;
+    }
+    if (number < 100) {
+      if (number === 81) return "quatre-vingt-un";
+      return `quatre-vingt-${numberToFrenchWords(number - 80)}`;
+    }
+    return String(number);
   }
 
   function setVoiceStatus(message, kind = "") {
@@ -839,16 +904,13 @@
     ensureVoiceCapabilities();
     const hasStatus = Boolean(els.voiceStatus?.textContent);
     const ttsVisible = session.ttsEnabled && voiceState.ttsSupported && session.voice.ttsAvailable;
-    const recognitionVisible = session.voiceInputEnabled &&
+    const recognitionActive = session.voiceInputEnabled &&
       voiceState.recognitionSupported &&
       session.voice.recognitionAvailable;
-    const showControls = ttsVisible || recognitionVisible || hasStatus;
+    const showControls = ttsVisible || recognitionActive || hasStatus;
     els.voiceControls.classList.toggle("hidden", !showControls);
     els.speakPrompt.classList.toggle("hidden", !ttsVisible);
-    els.voiceAnswer.classList.toggle("hidden", !recognitionVisible);
-    if (recognitionVisible) {
-      els.voiceAnswer.textContent = voiceState.isListening ? "Stop" : "Parler";
-    }
+    els.voiceAnswer.classList.add("hidden");
   }
 
   function markTtsUnavailable(message) {
@@ -873,10 +935,13 @@
     syncVoiceControls();
   }
 
-  function speakText(text) {
+  function speakText(text, { onend } = {}) {
     ensureVoiceCapabilities();
     if (!session?.ttsEnabled || !text) return;
     if (!voiceState.ttsSupported || !session.voice?.ttsAvailable) {
+      if (typeof onend === "function") {
+        onend();
+      }
       return;
     }
     try {
@@ -884,19 +949,62 @@
       const utterance = new window.SpeechSynthesisUtterance(text);
       utterance.lang = "fr-FR";
       utterance.rate = 0.9;
+      utterance.onend = () => {
+        if (typeof onend === "function") {
+          onend();
+        }
+      };
       utterance.onerror = () => {
         markTtsUnavailable("Lecture vocale indisponible.");
+        if (typeof onend === "function") {
+          onend();
+        }
       };
       window.speechSynthesis.speak(utterance);
     } catch (e) {
       console.warn("Speech synthesis unavailable.", e);
       markTtsUnavailable("Lecture vocale indisponible.");
+      if (typeof onend === "function") {
+        onend();
+      }
     }
   }
 
   function speakCurrentPrompt() {
     if (!session?.current || !session.ttsEnabled) return;
     speakText(buildSpokenPrompt(session.current));
+  }
+
+  function clearAutoListenTimer() {
+    if (voiceState.autoListenTimer) {
+      clearTimeout(voiceState.autoListenTimer);
+      voiceState.autoListenTimer = null;
+    }
+  }
+
+  function scheduleAutoListening(delayMs = 150) {
+    clearAutoListenTimer();
+    if (!session?.voiceInputEnabled || !session.voice?.recognitionAvailable) return;
+    voiceState.shouldAutoListen = true;
+    voiceState.autoListenTimer = setTimeout(() => {
+      voiceState.autoListenTimer = null;
+      if (!session?.current || session.currentDone) return;
+      startVoiceRecognition();
+    }, delayMs);
+  }
+
+  function playPromptVoiceLoop() {
+    if (!session?.current) return;
+    clearAutoListenTimer();
+    if (session.ttsEnabled && voiceState.ttsSupported && session.voice?.ttsAvailable) {
+      speakText(buildSpokenPrompt(session.current), {
+        onend: () => {
+          scheduleAutoListening();
+        },
+      });
+      return;
+    }
+    scheduleAutoListening();
   }
 
   function stopSpeaking() {
@@ -1076,7 +1184,8 @@
     }
     if (!session.voice?.recognitionAvailable) return;
     stopSpeaking();
-    stopVoiceRecognition();
+    stopVoiceRecognition(false);
+    voiceState.shouldAutoListen = true;
     try {
       const recognition = new voiceState.recognitionCtor();
       voiceState.recognition = recognition;
@@ -1107,12 +1216,18 @@
           markRecognitionUnavailable("Micro indisponible.");
           return;
         }
-        setVoiceStatus("Écoute impossible, réessaie.", "nope");
+        if (code !== "aborted" && code !== "no-speech") {
+          setVoiceStatus("Écoute impossible, réessaie.", "nope");
+        }
         syncVoiceControls();
       };
       recognition.onend = () => {
         voiceState.isListening = false;
         voiceState.recognition = null;
+        if (voiceState.shouldAutoListen && session?.voiceInputEnabled && !session.currentDone && session.voice?.recognitionAvailable) {
+          scheduleAutoListening(300);
+          return;
+        }
         syncVoiceControls();
       };
       recognition.start();
@@ -1122,7 +1237,11 @@
     }
   }
 
-  function stopVoiceRecognition() {
+  function stopVoiceRecognition(keepAutoListen = false) {
+    clearAutoListenTimer();
+    if (!keepAutoListen) {
+      voiceState.shouldAutoListen = false;
+    }
     if (!voiceState.recognition) {
       voiceState.isListening = false;
       return;
@@ -1379,7 +1498,7 @@
 
   els.speakPrompt.addEventListener("click", () => {
     ensureUserInteraction();
-    speakCurrentPrompt();
+    playPromptVoiceLoop();
   });
 
   els.voiceAnswer.addEventListener("click", () => {
