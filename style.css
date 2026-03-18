@@ -17,7 +17,7 @@
 
 body {
   margin: 0;
-  font-family: "OpenDyslexic", "OpenDyslexicAlta", "Comic Sans MS", sans-serif;
+  font-family: "Nunito", "Segoe UI", sans-serif;
   font-size: 18px;
   background: radial-gradient(circle at 20% 20%, rgba(0, 198, 185, 0.08), transparent 30%),
               radial-gradient(circle at 80% 10%, rgba(255, 159, 28, 0.1), transparent 30%),
@@ -25,13 +25,6 @@ body {
               var(--bg);
   color: var(--text);
   min-height: 100vh;
-}
-
-button,
-input,
-select,
-textarea {
-  font: inherit;
 }
 
 .topbar {
