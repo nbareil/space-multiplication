@@ -77,6 +77,8 @@
     recognitionSupported: null,
     recognitionCtor: null,
     recognition: null,
+    availableVoices: [],
+    preferredTtsVoice: null,
     isListening: false,
     shouldAutoListen: false,
     autoListenTimer: null,
@@ -783,6 +785,48 @@
       voiceState.recognitionCtor = ctor;
       voiceState.recognitionSupported = Boolean(ctor);
     }
+    refreshVoices();
+  }
+
+  function refreshVoices() {
+    if (!voiceState.ttsSupported || typeof window.speechSynthesis?.getVoices !== "function") {
+      voiceState.availableVoices = [];
+      voiceState.preferredTtsVoice = null;
+      return;
+    }
+    const voices = window.speechSynthesis.getVoices();
+    voiceState.availableVoices = Array.isArray(voices) ? voices : [];
+    voiceState.preferredTtsVoice = pickPreferredFrenchVoice(voiceState.availableVoices);
+  }
+
+  function pickPreferredFrenchVoice(voices) {
+    if (!Array.isArray(voices) || voices.length === 0) return null;
+    const frenchVoices = voices.filter((voice) => {
+      const lang = String(voice?.lang || "").toLowerCase();
+      return lang.startsWith("fr");
+    });
+    if (frenchVoices.length === 0) return null;
+    const rankedVoices = [
+      ...frenchVoices.filter((voice) => String(voice?.lang || "").toLowerCase() === "fr-fr"),
+      ...frenchVoices.filter((voice) => String(voice?.lang || "").toLowerCase() !== "fr-fr"),
+    ];
+    const scoreVoice = (voice) => {
+      const name = String(voice?.name || "").toLowerCase();
+      let score = 0;
+      if (String(voice?.lang || "").toLowerCase() === "fr-fr") score += 100;
+      if (voice?.default) score += 25;
+      if (voice?.localService) score += 10;
+      if (name.includes("france")) score += 30;
+      if (name.includes("fran")) score += 10;
+      if (name.includes("google")) score += 5;
+      if (name.includes("afrique") || name.includes("afric")) score -= 40;
+      if (name.includes("canad")) score -= 10;
+      if (name.includes("belg")) score -= 10;
+      if (name.includes("suisse")) score -= 10;
+      return score;
+    };
+    rankedVoices.sort((a, b) => scoreVoice(b) - scoreVoice(a));
+    return rankedVoices[0] || null;
   }
 
   function resetVoiceSessionState() {
@@ -948,6 +992,7 @@
       window.speechSynthesis.cancel();
       const utterance = new window.SpeechSynthesisUtterance(text);
       utterance.lang = "fr-FR";
+      utterance.voice = voiceState.preferredTtsVoice;
       utterance.rate = 0.9;
       utterance.onend = () => {
         if (typeof onend === "function") {
@@ -1554,6 +1599,9 @@
   });
 
   document.addEventListener("pointerdown", ensureUserInteraction, { once: true });
+  if (typeof window.speechSynthesis !== "undefined" && "onvoiceschanged" in window.speechSynthesis) {
+    window.speechSynthesis.addEventListener("voiceschanged", refreshVoices);
+  }
   const pointerMedia = window.matchMedia ? window.matchMedia("(pointer:coarse)") : null;
   if (pointerMedia?.addEventListener) {
     pointerMedia.addEventListener("change", configureAnswerInputForDevice);
