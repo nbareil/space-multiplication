@@ -14,7 +14,7 @@ Just open `index.html` in a modern browser—no build or backend required.
 
 ## Speech Features
 
-- Text-to-speech uses the browser Web Speech synthesis API when available.
+- Prompt playback uses recorded assets from `tts_output/<lang>/` first when available for the current page language, then falls back to the browser Web Speech synthesis API.
 - Voice answers use browser speech recognition support (`SpeechRecognition` / `webkitSpeechRecognition`) when available.
 - Both features are disabled by default and stored per player.
 - Browser support varies by device and browser; unsupported features are hidden automatically.

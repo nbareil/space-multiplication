@@ -65,6 +65,7 @@
   const MAX_WEIGHT = 6;
   const HINT_LEAD_MS = 5000;
   const TARGET_SUCCESS_RATE = 0.8;
+  const PROMPT_AUDIO_LANGS = new Set(["fr", "en"]);
 
   let store = loadStore();
   let session = null;
@@ -77,6 +78,9 @@
     recognitionSupported: null,
     recognitionCtor: null,
     recognition: null,
+    promptAudio: null,
+    nextPromptAudio: null,
+    nextPromptAudioPath: null,
     isListening: false,
     shouldAutoListen: false,
     autoListenTimer: null,
@@ -393,6 +397,7 @@
     startCountdown();
     renderPrompt();
     syncVoiceControls();
+    preloadUpcomingPrompt();
     playPromptVoiceLoop();
   }
 
@@ -798,7 +803,7 @@
 
   function applyInitialVoiceAvailability() {
     if (!session) return;
-    const ttsMissing = session.ttsEnabled && !voiceState.ttsSupported;
+    const ttsMissing = session.ttsEnabled && !hasPromptPlaybackSupport();
     const recognitionMissing = session.voiceInputEnabled && !voiceState.recognitionSupported;
     if (!ttsMissing && !recognitionMissing) return;
     if (ttsMissing) {
@@ -823,6 +828,22 @@
   function buildSpokenPrompt(card) {
     if (!card) return "";
     return `${numberToFrenchWords(card.a)} fois ${numberToFrenchWords(card.b)}`;
+  }
+
+  function getPromptAudioLanguage() {
+    const rawLang = String(document.documentElement.lang || navigator.language || "fr").trim().toLowerCase();
+    const lang = rawLang.split("-")[0];
+    return PROMPT_AUDIO_LANGS.has(lang) ? lang : null;
+  }
+
+  function getPromptAudioPath(card) {
+    const lang = getPromptAudioLanguage();
+    if (!card || !lang) return null;
+    return `tts_output/${lang}/${card.a}x${card.b}.mp3`;
+  }
+
+  function hasPromptPlaybackSupport() {
+    return Boolean(getPromptAudioLanguage()) || (voiceState.ttsSupported && session?.voice?.ttsAvailable);
   }
 
   function numberToFrenchWords(value) {
@@ -903,7 +924,7 @@
     if (!els.voiceControls || !session) return;
     ensureVoiceCapabilities();
     const hasStatus = Boolean(els.voiceStatus?.textContent);
-    const ttsVisible = session.ttsEnabled && voiceState.ttsSupported && session.voice.ttsAvailable;
+    const ttsVisible = session.ttsEnabled && hasPromptPlaybackSupport();
     const recognitionActive = session.voiceInputEnabled &&
       voiceState.recognitionSupported &&
       session.voice.recognitionAvailable;
@@ -970,9 +991,108 @@
     }
   }
 
+  function clearPromptAudio(audio = voiceState.promptAudio) {
+    if (!audio) return;
+    audio.onended = null;
+    audio.onerror = null;
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+    if (voiceState.promptAudio === audio) {
+      voiceState.promptAudio = null;
+    }
+  }
+
+  function clearPreloadedPromptAudio() {
+    if (!voiceState.nextPromptAudio) {
+      voiceState.nextPromptAudioPath = null;
+      return;
+    }
+    voiceState.nextPromptAudio.onended = null;
+    voiceState.nextPromptAudio.onerror = null;
+    voiceState.nextPromptAudio.pause();
+    voiceState.nextPromptAudio.removeAttribute("src");
+    voiceState.nextPromptAudio.load();
+    voiceState.nextPromptAudio = null;
+    voiceState.nextPromptAudioPath = null;
+  }
+
+  function preloadPromptAudio(card) {
+    const path = getPromptAudioPath(card);
+    if (!path) {
+      clearPreloadedPromptAudio();
+      return;
+    }
+    if (voiceState.nextPromptAudioPath === path && voiceState.nextPromptAudio) {
+      return;
+    }
+    clearPreloadedPromptAudio();
+    const audio = new Audio(path);
+    audio.preload = "auto";
+    audio.load();
+    voiceState.nextPromptAudio = audio;
+    voiceState.nextPromptAudioPath = path;
+  }
+
+  function preloadUpcomingPrompt() {
+    if (!session?.ttsEnabled) {
+      clearPreloadedPromptAudio();
+      return;
+    }
+    preloadPromptAudio(session.queue[0] || null);
+  }
+
+  function playRecordedPrompt(card, { onend, onfallback } = {}) {
+    const path = getPromptAudioPath(card);
+    if (!path) {
+      if (typeof onfallback === "function") {
+        onfallback();
+      }
+      return;
+    }
+
+    clearPromptAudio();
+    let audio = null;
+    if (voiceState.nextPromptAudioPath === path && voiceState.nextPromptAudio) {
+      audio = voiceState.nextPromptAudio;
+      voiceState.nextPromptAudio = null;
+      voiceState.nextPromptAudioPath = null;
+    } else {
+      audio = new Audio(path);
+      audio.preload = "auto";
+    }
+    voiceState.promptAudio = audio;
+    audio.onended = () => {
+      clearPromptAudio(audio);
+      if (typeof onend === "function") {
+        onend();
+      }
+    };
+    audio.onerror = () => {
+      clearPromptAudio(audio);
+      if (typeof onfallback === "function") {
+        onfallback();
+      }
+    };
+
+    const playAttempt = audio.play();
+    if (playAttempt && typeof playAttempt.catch === "function") {
+      playAttempt.catch(() => {
+        clearPromptAudio(audio);
+        if (typeof onfallback === "function") {
+          onfallback();
+        }
+      });
+    }
+  }
+
   function speakCurrentPrompt() {
     if (!session?.current || !session.ttsEnabled) return;
-    speakText(buildSpokenPrompt(session.current));
+    playRecordedPrompt(session.current, {
+      onfallback: () => {
+        speakText(buildSpokenPrompt(session.current));
+      },
+    });
   }
 
   function clearAutoListenTimer() {
@@ -996,9 +1116,20 @@
   function playPromptVoiceLoop() {
     if (!session?.current) return;
     clearAutoListenTimer();
-    if (session.ttsEnabled && voiceState.ttsSupported && session.voice?.ttsAvailable) {
-      speakText(buildSpokenPrompt(session.current), {
+    if (session.ttsEnabled) {
+      playRecordedPrompt(session.current, {
         onend: () => {
+          scheduleAutoListening();
+        },
+        onfallback: () => {
+          if (voiceState.ttsSupported && session.voice?.ttsAvailable) {
+            speakText(buildSpokenPrompt(session.current), {
+              onend: () => {
+                scheduleAutoListening();
+              },
+            });
+            return;
+          }
           scheduleAutoListening();
         },
       });
@@ -1008,6 +1139,8 @@
   }
 
   function stopSpeaking() {
+    clearPromptAudio();
+    clearPreloadedPromptAudio();
     if (typeof window.speechSynthesis === "undefined") return;
     try {
       window.speechSynthesis.cancel();
