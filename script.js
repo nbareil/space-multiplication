@@ -1159,9 +1159,8 @@
       .replace(/\s+/g, " ")
       .trim();
     if (!normalized) return null;
-    const digitMatch = normalized.match(/\d+/);
-    if (digitMatch) {
-      return Number(digitMatch[0]);
+    if (/^\d+$/.test(normalized)) {
+      return Number(normalized);
     }
     const directMap = {
       zero: 0,
@@ -1199,11 +1198,23 @@
     if (Object.prototype.hasOwnProperty.call(directMap, normalized)) {
       return directMap[normalized];
     }
+    const allowedTokens = new Set([
+      "zero", "un", "une", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf",
+      "dix", "onze", "douze", "treize", "quatorze", "quinze", "seize",
+      "vingt", "trente", "quarante", "cinquante", "soixante", "cent", "et",
+    ]);
     const tokens = normalized
       .replace(/-/g, " ")
       .split(" ")
       .filter((token) => token && token !== "et");
     if (!tokens.length) return null;
+    if (!normalized
+      .replace(/-/g, " ")
+      .split(" ")
+      .filter(Boolean)
+      .every((token) => allowedTokens.has(token))) {
+      return null;
+    }
     const unitMap = {
       zero: 0,
       un: 1,
@@ -1299,7 +1310,6 @@
   function handleRecognizedTranscript(transcript) {
     const parsed = parseTranscriptAsNumber(transcript);
     if (!Number.isFinite(parsed)) {
-      setVoiceStatus("Réponse non comprise.", "nope");
       return;
     }
     setVoiceStatus(`Réponse entendue : ${parsed}`, "ok");
